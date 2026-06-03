@@ -1,0 +1,432 @@
+{
+    "directed": "false",
+    "multigraph": "false",
+    "graph": {},
+    "nodes": [
+        {
+            "id": "h1",
+            "isHost": "true",
+            "ip": "10.0.0.1",
+            "mac": "f6:c0:28:8f:a5:9a"
+        },
+        {
+            "id": "h2",
+            "isHost": "true",
+            "ip": "10.0.0.2",
+            "mac": "d2:77:87:57:5d:69"
+        },
+        {
+            "id": "h3",
+            "isHost": "true",
+            "ip": "10.0.0.3",
+            "mac": "8a:ae:bc:42:55:d8"
+        },
+        {
+            "id": "h4",
+            "isHost": "true",
+            "ip": "10.0.0.4",
+            "mac": "f6:c3:e5:59:2a:6d"
+        },
+        {
+            "id": "h5",
+            "isHost": "true",
+            "ip": "10.0.0.5",
+            "mac": "5a:0d:09:aa:cd:f8"
+        },
+        {
+            "id": "h6",
+            "isHost": "true",
+            "ip": "10.0.0.6",
+            "mac": "96:f3:f8:b7:84:ab"
+        },
+        {
+            "id": "h7",
+            "isHost": "true",
+            "ip": "10.0.0.7",
+            "mac": "72:9e:d8:59:8b:d0"
+        },
+        {
+            "id": "h8",
+            "isHost": "true",
+            "ip": "10.0.0.8",
+            "mac": "1e:75:d8:41:51:f9"
+        },
+        {
+            "id": "h9",
+            "isHost": "true",
+            "ip": "10.0.0.9",
+            "mac": "4a:e2:74:fa:3e:c7"
+        },
+        {
+            "id": "s1",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s2",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s3",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s4",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s5",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s6",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s7",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s8",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s9",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s10",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s11",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s12",
+            "isSwitch": "true"
+        },
+        {
+            "id": "s13",
+            "isSwitch": "true"
+        }
+    ],
+    "links": [
+        {
+            "intfName1": "s1-eth1",
+            "intfName2": "h1-eth0",
+            "node1": "s1",
+            "node2": "h1",
+            "mac1": "46:23:4b:0f:ac:11",
+            "mac2": "f6:c0:28:8f:a5:9a",
+            "source": "s1",
+            "target": "h1",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s1-eth2",
+            "intfName2": "s6-eth2",
+            "node1": "s1",
+            "node2": "s6",
+            "mac1": "0e:73:0f:be:97:3c",
+            "mac2": "8e:5e:4c:9f:1e:f8",
+            "source": "s1",
+            "target": "s6",
+            "port1": 2,
+            "port2": 2,
+            "bw": 65
+        },
+        {
+            "intfName1": "s2-eth1",
+            "intfName2": "h2-eth0",
+            "node1": "s2",
+            "node2": "h2",
+            "mac1": "32:b6:8e:7a:92:a4",
+            "mac2": "d2:77:87:57:5d:69",
+            "source": "s2",
+            "target": "h2",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s2-eth2",
+            "intfName2": "s6-eth3",
+            "node1": "s2",
+            "node2": "s6",
+            "mac1": "3e:01:72:b3:0c:7f",
+            "mac2": "d2:d7:e5:2c:d6:f2",
+            "source": "s2",
+            "target": "s6",
+            "port1": 2,
+            "port2": 3,
+            "bw": 64
+        },
+        {
+            "intfName1": "s3-eth1",
+            "intfName2": "h3-eth0",
+            "node1": "s3",
+            "node2": "h3",
+            "mac1": "02:b2:93:9b:d7:7a",
+            "mac2": "8a:ae:bc:42:55:d8",
+            "source": "s3",
+            "target": "h3",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s3-eth2",
+            "intfName2": "s7-eth2",
+            "node1": "s3",
+            "node2": "s7",
+            "mac1": "ee:d7:34:f8:f4:59",
+            "mac2": "4a:3f:1d:ac:0f:81",
+            "source": "s3",
+            "target": "s7",
+            "port1": 2,
+            "port2": 2,
+            "bw": 63
+        },
+        {
+            "intfName1": "s4-eth1",
+            "intfName2": "h4-eth0",
+            "node1": "s4",
+            "node2": "h4",
+            "mac1": "2e:e8:5a:a0:89:a1",
+            "mac2": "f6:c3:e5:59:2a:6d",
+            "source": "s4",
+            "target": "h4",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s4-eth2",
+            "intfName2": "s7-eth3",
+            "node1": "s4",
+            "node2": "s7",
+            "mac1": "ba:96:a4:57:16:c6",
+            "mac2": "2a:bc:72:7d:78:91",
+            "source": "s4",
+            "target": "s7",
+            "port1": 2,
+            "port2": 3,
+            "bw": 65
+        },
+        {
+            "intfName1": "s5-eth1",
+            "intfName2": "h5-eth0",
+            "node1": "s5",
+            "node2": "h5",
+            "mac1": "ce:1a:f5:47:36:fc",
+            "mac2": "5a:0d:09:aa:cd:f8",
+            "source": "s5",
+            "target": "h5",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s5-eth2",
+            "intfName2": "h8-eth0",
+            "node1": "s5",
+            "node2": "h8",
+            "mac1": "ae:51:f3:35:6d:b8",
+            "mac2": "1e:75:d8:41:51:f9",
+            "source": "s5",
+            "target": "h8",
+            "port1": 2,
+            "bw": 100
+
+        },
+        {
+            "intfName1": "s5-eth3",
+            "intfName2": "h9-eth0",
+            "node1": "s5",
+            "node2": "h9",
+            "mac1": "2e:bf:ab:6e:59:fc",
+            "mac2": "4a:e2:74:fa:3e:c7",
+            "source": "s5",
+            "target": "h9",
+            "port1": 3,
+            "bw": 100
+        },
+        {
+            "intfName1": "s5-eth4",
+            "intfName2": "s8-eth1",
+            "node1": "s5",
+            "node2": "s8",
+            "mac1": "52:c9:bf:0b:6d:e5",
+            "mac2": "42:d0:6c:ab:24:5f",
+            "source": "s5",
+            "target": "s8",
+            "port1": 4,
+            "port2": 1,
+            "bw": 70
+        },
+        {
+            "intfName1": "s5-eth5",
+            "intfName2": "s11-eth1",
+            "node1": "s5",
+            "node2": "s11",
+            "mac1": "2a:e4:60:1d:84:aa",
+            "mac2": "5e:c8:57:fd:8d:2d",
+            "source": "s5",
+            "target": "s11",
+            "port1": 5,
+            "port2": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s6-eth1",
+            "intfName2": "h6-eth0",
+            "node1": "s6",
+            "node2": "h6",
+            "mac1": "72:75:cc:1b:f9:82",
+            "mac2": "96:f3:f8:b7:84:ab",
+            "source": "s6",
+            "target": "h6",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s6-eth4",
+            "intfName2": "s9-eth1",
+            "node1": "s6",
+            "node2": "s9",
+            "mac1": "b2:f5:8d:bb:0d:90",
+            "mac2": "0a:61:3a:60:95:2e",
+            "source": "s6",
+            "target": "s9",
+            "port1": 4,
+            "port2": 1,
+            "bw": 58
+        },
+        {
+            "intfName1": "s6-eth5",
+            "intfName2": "s12-eth1",
+            "node1": "s6",
+            "node2": "s12",
+            "mac1": "72:55:5c:d5:6f:be",
+            "mac2": "d2:4a:26:ad:1c:86",
+            "source": "s6",
+            "target": "s12",
+            "port1": 5,
+            "port2": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s7-eth1",
+            "intfName2": "h7-eth0",
+            "node1": "s7",
+            "node2": "h7",
+            "mac1": "ce:c4:ed:a6:91:6b",
+            "mac2": "72:9e:d8:59:8b:d0",
+            "source": "s7",
+            "target": "h7",
+            "port1": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s7-eth4",
+            "intfName2": "s10-eth1",
+            "node1": "s7",
+            "node2": "s10",
+            "mac1": "7a:20:06:2a:e9:0a",
+            "mac2": "fa:87:72:f1:54:3f",
+            "source": "s7",
+            "target": "s10",
+            "port1": 4,
+            "port2": 1,
+            "bw": 73
+        },
+        {
+            "intfName1": "s7-eth5",
+            "intfName2": "s13-eth1",
+            "node1": "s7",
+            "node2": "s13",
+            "mac1": "8e:13:1e:7a:cb:79",
+            "mac2": "96:dd:fd:3a:07:e2",
+            "source": "s7",
+            "target": "s13",
+            "port1": 5,
+            "port2": 1,
+            "bw": 100
+        },
+        {
+            "intfName1": "s8-eth2",
+            "intfName2": "s9-eth2",
+            "node1": "s8",
+            "node2": "s9",
+            "mac1": "3e:92:e4:0c:49:c5",
+            "mac2": "da:e8:3d:cd:04:7b",
+            "source": "s8",
+            "target": "s9",
+            "port1": 2,
+            "port2": 2,
+            "bw": 97
+        },
+        {
+            "intfName1": "s10-eth3",
+            "intfName2": "s8-eth3",
+            "node1": "s10",
+            "node2": "s8",
+            "mac1": "ce:e1:fa:e7:81:3f",
+            "mac2": "b2:0b:8e:5e:d1:65",
+            "source": "s10",
+            "target": "s8",
+            "port2": 3,
+            "port1": 3,
+            "bw": 99
+        },
+        {
+            "intfName1": "s13-eth2",
+            "intfName2": "s8-eth4",
+            "node1": "s13",
+            "node2": "s8",
+            "mac1": "26:8b:33:e6:1b:d0",
+            "mac2": "86:18:b3:39:c8:fe",
+            "source": "s13",
+            "target": "s8",
+            "port2": 4,
+            "port1": 2,
+            "bw": 100
+        },
+        {
+            "intfName1": "s9-eth3",
+            "intfName2": "s10-eth2",
+            "node1": "s9",
+            "node2": "s10",
+            "mac1": "f2:9d:07:9e:d9:42",
+            "mac2": "ea:4d:00:0d:de:98",
+            "source": "s9",
+            "target": "s10",
+            "port1": 3,
+            "port2": 2,
+            "bw": 94
+        },
+        {
+            "intfName1": "s11-eth2",
+            "intfName2": "s9-eth4",
+            "node1": "s11",
+            "node2": "s9",
+            "mac1": "d2:49:bd:2a:69:53",
+            "mac2": "e6:d8:dd:66:db:17",
+            "source": "s11",
+            "target": "s9",
+            "port2": 4,
+            "port1": 2,
+            "bw": 100
+        },
+        {
+            "intfName1": "s12-eth2",
+            "intfName2": "s10-eth4",
+            "node1": "s12",
+            "node2": "s10",
+            "mac1": "f6:22:1f:93:c7:e3",
+            "mac2": "5e:22:ff:e4:f2:7e",
+            "source": "s12",
+            "target": "s10",
+            "port2": 4,
+            "port1": 2,
+            "bw": 100
+        }
+    ]
+}

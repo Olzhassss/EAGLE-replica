@@ -1,0 +1,5 @@
+crc32c==2.3.post0
+networkx==2.6.3
+nnpy==1.4.2
+ryu==4.34
+
