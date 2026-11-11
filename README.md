@@ -6,16 +6,31 @@ This repository implements **Adaptive SDN Autoscaling via Generalizable Multi-Ag
 
 ## Table of Contents
 
-- [Project Overview](#project-overview)
-- [Directory Structure](#directory-structure)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Mininet Topology Setup](#mininet-topology-setup)
-  - [Ryu Controller Setup](#ryu-controller-setup)
-  - [Reinforcement Learning (RL) Model Setup](#reinforcement-learning-rl-model-setup)
-  - [Traffic Trace Execution](#traffic-trace-execution)
-- [Contributing](#contributing)
-- [License](#license)
+- [EAGLE Codebase](#eagle-codebase)
+  - [Table of Contents](#table-of-contents)
+  - [Project Overview](#project-overview)
+  - [Directory Structure](#directory-structure)
+    - [`ding/`](#ding)
+    - [`environment/`](#environment)
+    - [`partitioning/`](#partitioning)
+    - [`mininet_nets/`](#mininet_nets)
+    - [`model/`](#model)
+    - [`ryu_controller/`](#ryu_controller)
+    - [`saved_models/`](#saved_models)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Mininet Topology Setup](#mininet-topology-setup)
+    - [Ryu Controller Setup](#ryu-controller-setup)
+      - [Install Requirements](#install-requirements)
+      - [Start Controllers](#start-controllers)
+      - [Stop Controllers](#stop-controllers)
+    - [Reinforcement Learning (RL) Model Setup](#reinforcement-learning-rl-model-setup)
+      - [Create Python Virtual Environment](#create-python-virtual-environment)
+      - [Activate the Environment](#activate-the-environment)
+      - [Install Python Dependencies](#install-python-dependencies)
+      - [Train the RL Model](#train-the-rl-model)
+      - [Test the RL Model](#test-the-rl-model)
+    - [Traffic trace execution](#traffic-trace-execution)
 
 ---
 
@@ -30,26 +45,33 @@ This repository provides the configuration and implementation for emulating adap
 Below is an overview of the key directories in this repository:
 
 ### `ding/`
-This directory is part of an external open-source framework, **DI-engine**, used to implement reinforcement learning (RL) algorithms. It is included as a dependency for RL-related functionality. Within this directory, the `policy/decentralized.py` includes our custom policy implementation and `model/dec_mavac.py` the neural network definition. This module enables a multi-agent learning setup where individual agents independently learn strategies while coordinating collaboratively to optimize overall network performance.
+
+This directory is part of an external open-source framework, **DI-engine**, used to implement reinforcement learning (RL) algorithms. It is included as a dependency for RL-related functionality. Within this directory, the `policy/decentralized.py` includes our custom policy implementation and `model/template/dec_mavac.py` the neural network definition. This module enables a multi-agent learning setup where individual agents independently learn strategies while coordinating collaboratively to optimize overall network performance.
 
 For more information about DI-engine, visit the [DI-engine GitHub repository](https://github.com/opendilab/DI-engine).
 
 ### `environment/`
+
 Contains modules for managing distributed environments and configurations. The environment collects observations from the controller, sends them to the RL model, receives actions from the model, and translates them into network configurations.
 
 ### `partitioning/`
+
 Provides tools for graph partitioning and community detection.
 
 ### `mininet_nets/`
+
 Contains topology configuration and traffic-related files for Mininet.
 
 ### `model/`
+
 Contains scripts for training and testing decentralized reinforcement learning agents.
 
 ### `ryu_controller/`
+
 Contains the implementation of an SDN controller that collects statistics from switches and communicates with the environment.
 
 ### `saved_models/`
+
 Contains pre-trained model weights ready for testing.
 
 ---
@@ -75,6 +97,7 @@ sudo python custom_topology_v1.py
 ```
 
 This command will:
+
 - Start Mininet
 - Initialize the network topology
 - Launch the Mininet CLI
@@ -128,15 +151,20 @@ pip install -r rl_requirements.txt
 ```
 
 #### Train the RL Model
+
 To execute the training script:
+
 ```bash
 cd model/
 python train_decentralized.py
 ```
+
 The neural network weights are stored in `saved_models/`.
 
 #### Test the RL Model
-After specifying the correct weights path, you can start the testing phase: 
+
+After specifying the correct weights path, you can start the testing phase:
+
 ```bash
 cd model/
 python test_decentralized.py
@@ -154,12 +182,15 @@ tcprewrite --enet-dmac=<dst_MAC> --enet-smac=<src_MAC> --infile=<input_pcap> --o
 ```
 
 The generated traffic traces for each sending host can be placed in the `mininet_nets/` directory and can be replayed via:
+
 ```bash
 sudo tcpreplay -i h1-eth0 --stats=1 <h1_filename>.pcap
 ```
+
 If scripts are preferred to run the traffic, update the `start_traffic.py` script accordingly to reference the traffic scripts.
 
 Once the network is up, you can start the traffic inside the Mininet CLI in the following way:
+
 ```bash
 py exec(open('start_traffic.py').read())
 ```
