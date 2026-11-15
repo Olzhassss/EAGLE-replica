@@ -1,0 +1,6 @@
+# Python 3.7 only. Install Ryu with --no-build-isolation as described in README.md.
+ryu==4.34
+eventlet==0.30.2
+dnspython==1.16.0
+networkx==2.6.3
+crc32c==2.3.post0

@@ -1,38 +1,20 @@
-# Partitioning Module
+# Balanced Louvain and controller placement
 
-This module provides functionality for partitioning graphs into subgraphs using the Balanced Louvain algorithm. It is designed to work with graph data and includes visualization capabilities for the resulting partitions.
+Use the RL project's modern Python environment. Run from the repository root:
 
-## Requirements
+```sh
+MPLBACKEND=Agg model/.venv/bin/python -m partitioning --topo GtsCe
+```
 
-- Python 3.x
-- Required Python packages (install via `pip`):
-  - `networkx`
-  - `matplotlib`
+The default CLI prints placement JSON and writes `GtsCe.graphml_subnets.png`. Use `--output FILE` to save the placement and `--no-plot` to skip rendering. Use `--input FILE` for a GraphML file or a version-1 scenario JSON. For a scenario, host attachments are omitted during partitioning. GraphML is projected to a simple undirected graph with parallel weights summed, and the largest connected component is retained.
 
-### Dependencies
+`balanced_louvain.py` moves nodes or contracted node sets by modularity gain, subject to the configured capacity and imbalance penalty. `placement.py` chooses a switch within each community that minimizes mean hop distance to that community's switches. The CLI defaults of capacity 60, difference 10, rho 0.9, resolution 0.1 and seed 42 come from the original standalone benchmark. The study reports capacity 6, difference 2 and rho 0.01 for its source network. Its resolution and seeds require corresponding provenance.
 
-- **`benchmark_consts`**: Provides the `get_args` function to parse arguments.
-- **`problem`**: Contains the `Problem` class for handling graph data.
-- **`balanced_louvain`**: Implements the Balanced Louvain algorithm for graph partitioning.
-- **`vis`**: Provides visualization utilities for graph partitions.
+```sh
+model/.venv/bin/python -m partitioning --input scenarios/v0.json \
+  --capacity 6 --difference 2 --rho 0.01 --no-plot --output placement.json
+```
 
-## How to Use
+Pass `--scenario-template scenarios/v0.json --export-scenario PATH` to write controller assignments back into a scenario. A template supplies IDs, controller endpoints, supporting switches, hosts, ports, bandwidth, and traffic. The export requires one configured supporting switch per inferred community. Use a scenario with the published assignments to evaluate the study checkpoint.
 
-1. **Topology File**:
-   - Add support for your topology in `benchmark_consts` and add the file in the graphml file in the `topology-zoo` subdirectory.
-
-2. **Run the Script**:
-   - Execute the script from the command line:
-     ```bash
-     python partitioning.py --topo example_topology.json
-     ```
-   - Provide the necessary arguments as required by the `get_args` function.
-
-3. **View Results**:
-   - The script will partition the graph and visualize the results using the `vis_partitions` function.
-
-## Notes
-
-- The Balanced Louvain algorithm parameters (e.g., `resolution`, `gamma`, `epsilon`, `rho`, `seed`) are hardcoded in the `benchmark` function. You can modify these values to experiment with different partitioning results.
-- Ensure all dependencies are installed and accessible in the Python environment.
-
+The GtsCe fixture represents 149 switches and 193 undirected edges. Bidirectional representation gives 386 arcs, the count reported for V4 in the study.

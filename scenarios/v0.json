@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "id": "V0-checkout",
+  "provenance": "Reconstructed from the checked-in Mininet topology and Ryu port map.",
+  "controllers": [
+    {
+      "id": "c0",
+      "host": "127.0.0.1",
+      "openflow_port": 6633,
+      "http_port": 8080,
+      "support_switch": "s12",
+      "initial_action": 1
+    },
+    {
+      "id": "c1",
+      "host": "127.0.0.1",
+      "openflow_port": 6634,
+      "http_port": 8081,
+      "support_switch": "s11",
+      "initial_action": 1
+    },
+    {
+      "id": "c2",
+      "host": "127.0.0.1",
+      "openflow_port": 6635,
+      "http_port": 8082,
+      "support_switch": "s13",
+      "initial_action": 1
+    }
+  ],
+  "switches": [
+    {
+      "id": "s1",
+      "dpid": 1,
+      "controller": "c0"
+    },
+    {
+      "id": "s2",
+      "dpid": 2,
+      "controller": "c0"
+    },
+    {
+      "id": "s3",
+      "dpid": 3,
+      "controller": "c2"
+    },
+    {
+      "id": "s4",
+      "dpid": 4,
+      "controller": "c2"
+    },
+    {
+      "id": "s5",
+      "dpid": 5,
+      "controller": "c1"
+    },
+    {
+      "id": "s6",
+      "dpid": 6,
+      "controller": "c0"
+    },
+    {
+      "id": "s7",
+      "dpid": 7,
+      "controller": "c2"
+    },
+    {
+      "id": "s8",
+      "dpid": 8,
+      "controller": "c2"
+    },
+    {
+      "id": "s9",
+      "dpid": 9,
+      "controller": "c1"
+    },
+    {
+      "id": "s10",
+      "dpid": 10,
+      "controller": "c0"
+    },
+    {
+      "id": "s11",
+      "dpid": 11,
+      "controller": "c1"
+    },
+    {
+      "id": "s12",
+      "dpid": 12,
+      "controller": "c0"
+    },
+    {
+      "id": "s13",
+      "dpid": 13,
+      "controller": "c2"
+    }
+  ],
+  "hosts": [
+    {
+      "id": "h1",
+      "ip": "10.0.0.1/24",
+      "mac": "f6:c0:28:8f:a5:9a"
+    },
+    {
+      "id": "h2",
+      "ip": "10.0.0.2/24",
+      "mac": "d2:77:87:57:5d:69"
+    },
+    {
+      "id": "h3",
+      "ip": "10.0.0.3/24",
+      "mac": "8a:ae:bc:42:55:d8"
+    },
+    {
+      "id": "h4",
+      "ip": "10.0.0.4/24",
+      "mac": "f6:c3:e5:59:2a:6d"
+    },
+    {
+      "id": "h5",
+      "ip": "10.0.0.5/24",
+      "mac": "5a:0d:09:aa:cd:f8"
+    },
+    {
+      "id": "h6",
+      "ip": "10.0.0.6/24",
+      "mac": "96:f3:f8:b7:84:ab"
+    },
+    {
+      "id": "h7",
+      "ip": "10.0.0.7/24",
+      "mac": "72:9e:d8:59:8b:d0"
+    },
+    {
+      "id": "h8",
+      "ip": "10.0.0.8/24",
+      "mac": "1e:75:d8:41:51:f9"
+    },
+    {
+      "id": "h9",
+      "ip": "10.0.0.9/24",
+      "mac": "4a:e2:74:fa:3e:c7"
+    }
+  ],
+  "links": [
+    {
+      "source": "s1",
+      "target": "h1",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s1",
+      "target": "s6",
+      "source_port": 2,
+      "target_port": 2,
+      "capacity_bps": 65000000
+    },
+    {
+      "source": "s2",
+      "target": "h2",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s2",
+      "target": "s6",
+      "source_port": 2,
+      "target_port": 3,
+      "capacity_bps": 64000000
+    },
+    {
+      "source": "s3",
+      "target": "h3",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s3",
+      "target": "s7",
+      "source_port": 2,
+      "target_port": 2,
+      "capacity_bps": 63000000
+    },
+    {
+      "source": "s4",
+      "target": "h4",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s4",
+      "target": "s7",
+      "source_port": 2,
+      "target_port": 3,
+      "capacity_bps": 65000000
+    },
+    {
+      "source": "s5",
+      "target": "h5",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s5",
+      "target": "h8",
+      "source_port": 2,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s5",
+      "target": "h9",
+      "source_port": 3,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s5",
+      "target": "s8",
+      "source_port": 4,
+      "target_port": 1,
+      "capacity_bps": 70000000
+    },
+    {
+      "source": "s5",
+      "target": "s11",
+      "source_port": 5,
+      "target_port": 1,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s6",
+      "target": "h6",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s6",
+      "target": "s9",
+      "source_port": 4,
+      "target_port": 1,
+      "capacity_bps": 58000000
+    },
+    {
+      "source": "s6",
+      "target": "s12",
+      "source_port": 5,
+      "target_port": 1,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s7",
+      "target": "h7",
+      "source_port": 1,
+      "target_port": 0,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s7",
+      "target": "s10",
+      "source_port": 4,
+      "target_port": 1,
+      "capacity_bps": 73000000
+    },
+    {
+      "source": "s7",
+      "target": "s13",
+      "source_port": 5,
+      "target_port": 1,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s8",
+      "target": "s9",
+      "source_port": 2,
+      "target_port": 2,
+      "capacity_bps": 97000000
+    },
+    {
+      "source": "s10",
+      "target": "s8",
+      "source_port": 3,
+      "target_port": 3,
+      "capacity_bps": 99000000
+    },
+    {
+      "source": "s13",
+      "target": "s8",
+      "source_port": 2,
+      "target_port": 4,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s9",
+      "target": "s10",
+      "source_port": 3,
+      "target_port": 2,
+      "capacity_bps": 94000000
+    },
+    {
+      "source": "s11",
+      "target": "s9",
+      "source_port": 2,
+      "target_port": 4,
+      "capacity_bps": 100000000
+    },
+    {
+      "source": "s12",
+      "target": "s10",
+      "source_port": 2,
+      "target_port": 4,
+      "capacity_bps": 100000000
+    }
+  ],
+  "telemetry": {
+    "poll_seconds": 1,
+    "peer_poll_seconds": 0.3,
+    "peer_timeout_seconds": 2
+  },
+  "traffic": {
+    "idle": [],
+    "synthetic": [
+      {
+        "kind": "tcp",
+        "id": "sample",
+        "source": "h1",
+        "target": "h4",
+        "start_seconds": 1,
+        "size_bytes": 20000000,
+        "rate_bps": 8000000
+      }
+    ]
+  }
+}

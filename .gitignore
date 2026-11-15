@@ -2,3 +2,7 @@
 AGENTS.md
 __pycache__/
 *.pth.tar
+/runs/
+*.pdf
+*.gz
+*.7z

@@ -1,322 +1,392 @@
-import sys, os
-sys.path.append(os.path.dirname(os.getcwd()))
-import json, nnpy
-from operator import attrgetter
-import crc32c,time
+"""OpenFlow 1.3 routing, peer state exchange, and the EAGLE HTTP interface."""
+
+import json
+import os
+import time
+from urllib.error import URLError
+from urllib.request import build_opener, ProxyHandler
+
+from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import MAIN_DISPATCHER, DEAD_DISPATCHER
-from ryu.controller.handler import set_ev_cls
+from ryu.controller.handler import DEAD_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.lib import hub
-from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.ofproto import ofproto_v1_3
-from ryu.services.protocols.ovsdb import event as ovsdb_event
-import networkx as nx
-import datetime
-
 from webob import Response
 
-from config_reader import Reader
-from mininet_nets.configuration_v1 import Configuration_V1
-
-simple_switch_instance_name = 'simple_switch_api_app'
-url_stats = '/network/stats'
-url_switches = '/network/list_switches'
-url_actions = '/model/actions'
+from ryu_controller.openflow_rules import apply_forwarding_rules, request_master, request_slave
+from ryu_controller.routing import plan_forwarding_rules
+from ryu_controller.telemetry import Telemetry, compute_link_utilization
+from ryu_controller.topology_state import TopologyState, load_scenario
 
 
-class SimpleMonitor13(app_manager.RyuApp):
-    _CONTEXTS = {'wsgi': WSGIApplication}
+class EagleController(app_manager.RyuApp):
+    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+    _CONTEXTS = {"wsgi": WSGIApplication}
 
     def __init__(self, *args, **kwargs):
-        super(SimpleMonitor13, self).__init__(*args, **kwargs)
+        super(EagleController, self).__init__(*args, **kwargs)
+        self.scenario = load_scenario(os.environ["EAGLE_SCENARIO"])
+        self.controller_id = os.environ["EAGLE_CONTROLLER_ID"]
+        self.incarnation = time.time_ns()
+        self.sequence = 0
+        self.topology = TopologyState(self.scenario)
+        self.telemetry = Telemetry(self.scenario)
+        self.switch_for_dpid = {row["dpid"]: node for node, row in self.scenario.switches.items()}
         self.datapaths = {}
-        self.system_id = 0
-        self.prev = {} 
-        self.prev_flows={} 
-        self.last_timestamp = {}
-        self.state={} 
-        self.stats={} 
-        self.state['type'] = 'information'
-        self.state['data'] = {}
-        self.flows={} 
-        self.throughput={} 
-        self.demands = {}
-        self.config_file = 'config.ini'
-        self.config = Reader(self.config_file)
-        self.time_interval = self.config.frequency_request() 
-        self.node = None
-        self.setup = Configuration_V1()
-        wsgi = kwargs['wsgi']
-        wsgi.register(SimpleSwitchController,
-                      {simple_switch_instance_name: self})
-       
-        hub.spawn(self._monitor)
-        hub.spawn(self._listen)
+        self.port_states = {}
+        self.master = set()
+        self.requested_roles = {}
+        self.installed = {}
+        self.seen_peers = {self.controller_id}
+        self.seen_switches = set()
+        self.peers = {}
+        self.topology_key = None
+        self.generation = 0
+        self.next_poll = 0.0
+        self.pending_barriers = {}
+        self.rule_timing = {}
+        self.route_error = None
+        self.lock = hub.Semaphore()
+        self.http = build_opener(ProxyHandler({}))
+        kwargs["wsgi"].register(EagleApi, {"app": self})
 
+    def start(self):
+        super(EagleController, self).start()
+        self.threads.append(hub.spawn(self._run))
 
-    @set_ev_cls(ofp_event.EventOFPStateChange,
-                [MAIN_DISPATCHER, DEAD_DISPATCHER])
-    def _state_change_handler(self, ev):
-        datapath = ev.datapath
-        if ev.state == MAIN_DISPATCHER:
-            if datapath.id not in self.datapaths:
-                if datapath.id == 12: 
-                    self.node = '127.0.0.1:8000'
-                    self.cls=['127.0.0.1:8001','127.0.0.1:8002']
-                if datapath.id == 11:
-                    self.node = '127.0.0.1:8001'
-                    self.cls=['127.0.0.1:8000','127.0.0.1:8002']
-                if datapath.id == 13:
-                    self.node = '127.0.0.1:8002'
-                    self.cls=['127.0.0.1:8001','127.0.0.1:8000']
-                
-                self.logger.debug('register datapath: %016x', datapath.id)
-                self.datapaths[datapath.id] = datapath
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
+    def on_datapath_state(self, event):
+        datapath = event.datapath
+        switch = self.switch_for_dpid.get(datapath.id)
+        if switch is None:
+            return
+        with self.lock:
+            if event.state == MAIN_DISPATCHER:
+                expected = self.scenario.ports[switch].keys()
+                missing = expected - datapath.ports.keys()
+                if missing:
+                    self.logger.error("%s is missing configured OpenFlow ports %s", switch, sorted(missing))
+                    return
+                self.datapaths[switch] = datapath
+                self.port_states[switch] = {
+                    port for port in expected if _port_is_up(datapath, datapath.ports[port])
+                }
+                self.seen_switches.add(switch)
+                self._forget_programming(switch)
+            elif self.datapaths.get(switch) is datapath:
+                del self.datapaths[switch]
+                del self.port_states[switch]
+                self._forget_programming(switch)
 
-                self.setup.config_switch(datapath)
-            
-        elif ev.state == DEAD_DISPATCHER:
-            if datapath.id in self.datapaths:
-                self.logger.debug('unregister datapath: %016x', datapath.id)
-                del self.datapaths[datapath.id]
+    def _forget_programming(self, switch):
+        self.requested_roles.pop(switch, None)
+        self.master.discard(switch)
+        self.installed.pop(switch, None)
+        self.pending_barriers.pop(switch, None)
+        self.topology_key = None
+        self.telemetry.reset()
 
-    @set_ev_cls(ovsdb_event.EventNewOVSDBConnection)
-    def handle_new_ovsdb_connection(self, ev):
-        self.system_id = ev.system_id
-        address = ev.client.address
-        self.logger.info('New OVSDB connection from system-id=%s, address=%s', self.system_id, address)
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def on_port_status(self, event):
+        message = event.msg
+        switch = self.switch_for_dpid.get(message.datapath.id)
+        port = message.desc.port_no
+        with self.lock:
+            if self.datapaths.get(switch) is not message.datapath or port not in self.scenario.ports[switch]:
+                return
+            if message.reason == message.datapath.ofproto.OFPPR_DELETE or not _port_is_up(message.datapath, message.desc):
+                self.port_states[switch].discard(port)
+            else:
+                self.port_states[switch].add(port)
 
-    def _listen(self):
-        ''' Listen to other controllers and update the global topology '''
-        hub.sleep(1)
+    @set_ev_cls(ofp_event.EventOFPRoleReply, MAIN_DISPATCHER)
+    def on_role_reply(self, event):
+        message = event.msg
+        switch = self.switch_for_dpid.get(message.datapath.id)
+        with self.lock:
+            if self.datapaths.get(switch) is not message.datapath:
+                return
+            if message.role == message.datapath.ofproto.OFPCR_ROLE_MASTER:
+                self.master.add(switch)
+            else:
+                self.master.discard(switch)
 
-        while self.node == None:
-            hub.sleep(1)
+    @set_ev_cls(ofp_event.EventOFPBarrierReply, MAIN_DISPATCHER)
+    def on_barrier_reply(self, event):
+        message = event.msg
+        switch = self.switch_for_dpid.get(message.datapath.id)
+        with self.lock:
+            if self.pending_barriers.get(switch) == (message.datapath, message.xid):
+                del self.pending_barriers[switch]
+                if not self.pending_barriers:
+                    self.rule_timing["barrier_at"] = time.time()
 
-        self.sub = nnpy.Socket(nnpy.AF_SP, nnpy.REP)
-        self.sub.bind('tcp://{}'.format(self.node))
-
-        self.sub_c1= nnpy.Socket(nnpy.AF_SP, nnpy.REQ)
-        self.sub_c1.connect('tcp://{}'.format(self.cls[0])) 
-
-        self.sub_c2= nnpy.Socket(nnpy.AF_SP, nnpy.REQ)
-        self.sub_c2.connect('tcp://{}'.format(self.cls[1]))
-
-        self.graph_c1=None
-        self.graph_c2=None
-        
-        self.setup.create_net() 
-        
-         
-        msg={'sender':self.node, 'graph':nx.node_link_data(self.setup.net), 'edges':self.setup.removed_edges}
-        
-        self.sub_c1.send(json.dumps(msg))
-        self.sub_c2.send(json.dumps(msg))
-
-        while True: 
-            try :
-                msg = self.sub.recv(1)
-                msg = json.loads(msg) 
-                sender=msg['sender']
-                subgraph=msg['graph']
-                edges=msg['edges']
-                subgraph=nx.node_link_graph(subgraph)
-                if sender == self.cls[0]:
-                    self.graph_c1=subgraph
-                    self.edges_c1=edges
-                else :
-                    self.graph_c2=subgraph
-                    self.edges_c2=edges
-                self.create_topo()
-            except:
-                hub.sleep(0.2)
- 
-    def create_topo(self):
-
-        if self.graph_c1 is not None and self.graph_c2 is not None:
-            self.setup.global_net=nx.compose(self.setup.net,self.graph_c1)
-            self.setup.global_net=nx.compose(self.setup.global_net,self.graph_c2)
-            
-            self.setup.global_net.add_edges_from(self.edges_c1)
-            self.setup.global_net.add_edges_from(self.edges_c2) 
-            
-            for edge in self.setup.global_net.edges:
-                node1=edge[0]
-                node2=edge[1]
-                nodes = self.setup.global_net.nodes
-                if nodes[node1].get('isHost'):
-                    self.setup.macs[node1]=nodes[node1].get('mac')
-                if nodes[node2].get('isHost'):
-                    self.setup.macs[node2]=nodes[node2].get('mac')
-
-            self.setup.table_clear() 
-            self.setup.route() 
-
-    def topology_change(self):
-
-        ''' Notify other controllers about the topology change '''
-
-        if self.setup.topology_change == 1:
-            msg={'sender' : self.node, 'graph' : nx.node_link_data(self.setup.net), 'edges' : self.setup.removed_edges}
-            self.sub_c1.send(json.dumps(msg))
-            self.sub_c2.send(json.dumps(msg))
-            self.setup.topology_change = 0
-
-    def _monitor(self):
-        hub.sleep(1)
-        
-        while True:
-            
-            for dp in self.datapaths.values():
-                self._request_stats(dp)
-                if dp.id in self.setup.hosts.keys(): 
-                    self._request_flows(dp)
-            
-            self.flows=self.throughput 
-            self.stats=self.setup.normalize_state(self.state)
-        
-            hub.sleep(self.time_interval) 
-
-
-    def _request_stats(self, datapath):
-        """
-        Request statistics to the switch
-        :param datapath: switch identifier
-        """
-        self.logger.debug('send stats request: %016x', datapath.id)
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
-        datapath.send_msg(req)
-
-    def _request_flows(self, datapath):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        cookie = cookie_mask = 0
-        req_th = parser.OFPFlowStatsRequest(datapath, 0,
-                                         ofproto.OFPTT_ALL,
-                                         ofproto.OFPP_ANY, ofproto.OFPG_ANY,
-                                         cookie, cookie_mask)
-        datapath.send_msg(req_th)
+    @set_ev_cls(ofp_event.EventOFPErrorMsg, MAIN_DISPATCHER)
+    def on_openflow_error(self, event):
+        message = event.msg
+        switch = self.switch_for_dpid.get(message.datapath.id)
+        self.logger.warning("OpenFlow error on %s: type=%s code=%s", switch, message.type, message.code)
+        with self.lock:
+            if self.datapaths.get(switch) is message.datapath and (
+                switch in self.master or self.requested_roles.get(switch, (False, 0))[0]
+            ):
+                self._forget_programming(switch)
+                self.route_error = "OpenFlow programming rejected on " + switch
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
-    def _port_stats_reply_handler(self, ev):
-        """
-        Handle switch response
-        :param ev: response
-        """
-        body = ev.msg.body
-        datapath_id = ev.msg.datapath.id
-        self.packets_on_each_port(body, datapath_id)
-
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
-    def flow_stats_reply_handler(self, ev):
-        body = ev.msg.body
-        datapath_id = ev.msg.datapath.id
-        self.flow_stats(body,datapath_id)
+    def on_stats(self, event):
+        with self.lock:
+            self.telemetry.receive(event.msg)
 
-    def flow_stats(self,body,datapath_id):
-        ''' Calculate the throughput and demands for each flow '''
-        for stat in body:
-            if 'eth_src' not in stat.match or 'eth_dst' not in stat.match: continue
-            src=stat.match['eth_src']
-            dst=stat.match['eth_dst']
-            host_src=[k for k, v in self.setup.macs.items() if v == src][0]
-            host_dst=[k for k, v in self.setup.macs.items() if v == dst][0]
+    def presence(self):
+        return {
+            "schema_version": 1, "scenario": self.scenario.fingerprint,
+            "controller_id": self.controller_id, "incarnation": self.incarnation,
+            "sequence": self.sequence, "owners": self.topology.owners,
+            "ports": {switch: sorted(ports) for switch, ports in self.port_states.items()},
+            "resources": dict(self.topology.resources),
+        }
 
-            if host_src in self.setup.hosts[datapath_id] or host_dst in self.setup.hosts[datapath_id]:
-                session=src+dst+str(src)+str(dst)
-                hash_key = crc32c.crc32c(session.encode())
-                kstr = host_src+' '+host_dst
-                total=stat.byte_count
- 
-                if hash_key not in self.prev_flows.keys(): 
-                    self.prev_flows[hash_key] = total
-                else: 
-                    if total >= self.prev_flows[hash_key]:
-                        self.throughput[hash_key]=total - self.prev_flows[hash_key]
-                        self.demands[kstr] = total - self.prev_flows[hash_key]
-                    else:
-                        self.throughput[hash_key]=total 
-                        self.demands[kstr] = total
-                self.prev_flows[hash_key]=total 
-                
-
-    def packets_on_each_port(self, body, datapath_id):
-        
-        in_packets = {}
-        out_packets = {}
-
-        for stat in sorted(body, key=attrgetter('port_no')):
-            if stat.port_no > ofproto_v1_3.OFPP_MAX:
+    def _pull_peers(self):
+        timeout = min(self.scenario.telemetry["peer_poll_seconds"], 0.5)
+        for peer, item in self.scenario.controllers.items():
+            if peer == self.controller_id:
                 continue
-            
-            in_packets[stat.port_no] = stat.rx_bytes
-            out_packets[stat.port_no] = stat.tx_bytes
+            url = "http://{}:{}/network/state".format(item["host"], item["http_port"])
+            try:
+                with self.http.open(url, timeout=timeout) as response:
+                    frame = json.load(response)
+                if frame["controller_id"] != peer or frame["scenario"] != self.scenario.fingerprint:
+                    continue
+                cursor = (frame["incarnation"], frame["sequence"])
+                if peer not in self.peers or cursor >= self.peers[peer][0]:
+                    self.peers[peer] = (cursor, time.monotonic(), frame)
+                    self.seen_peers.add(peer)
+            except (URLError, OSError, ValueError, KeyError) as error:
+                self.logger.debug("Peer %s unavailable: %s", peer, error)
 
-        if datapath_id not in self.prev:
-            self.logger.info(f'First response from switch {datapath_id}')
-            self.last_timestamp[datapath_id] = datetime.datetime.now()
-            self.prev[datapath_id] = {}
-        else:
-            self.last_timestamp[datapath_id] = datetime.datetime.now()
-            in_diff = {}
-            out_diff = {}
-            
-            for port, prev_in_packets in self.prev[datapath_id]['in_packets'].items():
-                in_diff[port] = in_packets[port] - prev_in_packets
-                
-            for port, prev_out_packets in self.prev[datapath_id]['out_packets'].items():
-                out_diff[port] = out_packets[port] - prev_out_packets
-                
-            self.state['data'][datapath_id] = {
-                'timestamp': str(self.last_timestamp[datapath_id]),
-                'in_packets': in_diff,
-                'out_packets': out_diff
-            }
+    def _run(self):
+        while True:
+            try:
+                self._pull_peers()
+                with self.lock:
+                    self._reconcile()
+            except Exception:
+                self.logger.exception("Unable to reconcile EAGLE topology")
+                with self.lock:
+                    self.topology_key = None
+                    self.telemetry.reset()
+            hub.sleep(self.scenario.telemetry["peer_poll_seconds"])
 
-        self.prev[datapath_id]['in_packets'] = in_packets
-        self.prev[datapath_id]['out_packets'] = out_packets
+    def _reconcile(self):
+        now = time.monotonic()
+        expiry = self.scenario.telemetry["peer_timeout_seconds"]
+        frames = {peer: frame for peer, (_, received, frame) in self.peers.items()
+                  if now - received <= expiry}
+        for frame in frames.values():
+            self.topology.merge_resources(frame["resources"])
+            self.seen_switches.update(frame["ports"])
+        frames[self.controller_id] = self.presence()
+        if self.seen_peers != self.scenario.controllers.keys() or self.seen_switches != self.scenario.switches.keys():
+            return
+        self.topology.update_presence(frames)
+        self.sequence += 1
+        desired_datapaths = {
+            node: datapath for node, datapath in self.datapaths.items()
+            if self.topology.owners[self.scenario.switches[node]["controller"]] == self.controller_id
+        }
+        for node, datapath in sorted(self.datapaths.items()):
+            is_owner = node in desired_datapaths
+            role, requested_at = self.requested_roles.get(node, (False, 0.0))
+            if is_owner and (not role or (node not in self.master and now - requested_at >= expiry)):
+                self.requested_roles[node] = (True, now)
+                request_master(datapath, time.time_ns())
+            elif role and not is_owner:
+                self.requested_roles[node] = (False, now)
+                self.master.discard(node)
+                self.installed.pop(node, None)
+                request_slave(datapath, time.time_ns())
+        if desired_datapaths.keys() - self.master:
+            self.topology_key = None
+            self.telemetry.reset()
+            return
+
+        graph = self.topology.active
+        key = (
+            frozenset(graph.nodes), frozenset(frozenset(edge) for edge in graph.edges),
+            tuple(self.topology.owners.items()), frozenset(desired_datapaths),
+            tuple(tuple(row["revision"]) for row in self.topology.resources.values()),
+        )
+        if key != self.topology_key or (self.pending_barriers and now >= self.barrier_deadline):
+            self.generation += 1
+            self.telemetry.reset()
+            rules = plan_forwarding_rules(graph, self.scenario)
+            self._dispatch_rules(desired_datapaths, rules, now)
+            self.topology_key = key
+            self.route_error = None
+            self.next_poll = now
+        if not self.pending_barriers and now >= self.next_poll:
+            self.telemetry.request_round(desired_datapaths, self.generation)
+            if not desired_datapaths:
+                # An elected controller with no present switches publishes an empty window.
+                self.telemetry._publish(self.telemetry.pending)
+                self.telemetry.pending = None
+            self.next_poll = max(now, self.next_poll + self.scenario.telemetry["poll_seconds"])
+
+    def _dispatch_rules(self, datapaths, rules, now):
+        started = time.monotonic()
+        previous_pending = self.pending_barriers
+        self.pending_barriers = {}
+        for switch, datapath in sorted(datapaths.items()):
+            old = None if switch in previous_pending else self.installed.get(switch)
+            desired = rules[switch]
+            if old == desired:
+                continue
+            apply_forwarding_rules(datapath, old, desired)
+            barrier = datapath.ofproto_parser.OFPBarrierRequest(datapath)
+            datapath.set_xid(barrier)
+            self.pending_barriers[switch] = (datapath, barrier.xid)
+            datapath.send_msg(barrier)
+            self.installed[switch] = desired
+        self.barrier_deadline = now + self.scenario.telemetry["peer_timeout_seconds"]
+        self.rule_timing = {
+            "dispatch_seconds": time.monotonic() - started,
+            "dispatched_at": time.time(),
+        }
+
+    def stats(self, slot, view):
+        if self.topology.owners.get(slot) != self.controller_id or self.telemetry.latest is None:
+            return None
+        sample = self.telemetry.latest
+        duration = sample["sample_duration_seconds"]
+        # The checkout divided raw deltas by a Mi-based denominator with no elapsed-time term.
+        utilization_duration = duration if view == "active" else (1024 * 1024) / 1_000_000
+        graph = self.topology.observation_graph(slot, view)
+        weights = {}
+        switch_rates = {}
+        active = self.topology.active
+        for node, ports in sample["ports"].items():
+            if self.scenario.switches[node]["controller"] != slot:
+                continue
+            for port, (rx, tx) in ports.items():
+                neighbor = self.scenario.ports[node][port]
+                if active.has_edge(node, neighbor):
+                    switch_rates[node] = switch_rates.get(node, 0.0) + tx * 8 / duration
+                if not graph.has_edge(node, neighbor):
+                    continue
+                capacity = graph[node][neighbor]["capacity_bps"]
+                weights.setdefault(node, {})[neighbor] = max(
+                    weights.get(node, {}).get(neighbor, 0), compute_link_utilization(tx, utilization_duration, capacity)
+                )
+                weights.setdefault(neighbor, {})[node] = max(
+                    weights.get(neighbor, {}).get(node, 0), compute_link_utilization(rx, utilization_duration, capacity)
+                )
+        delivered = {}
+        legacy = {}
+        for node, flows in sorted(sample["flows"].items()):
+            if self.scenario.switches[node]["controller"] != slot:
+                continue
+            for (source, target), count in flows.items():
+                flow = source + " " + target
+                legacy.setdefault(flow, count)
+                if target in self.scenario.graph[node]:
+                    delivered[flow] = count
+                    legacy[flow] = count
+        active_switches, active_ports = self.topology.resource_usage(slot)
+        links = []
+        for source, target in graph.edges:
+            weight = max(weights.get(source, {}).get(target, 0), weights.get(target, {}).get(source, 0))
+            # The legacy encoder saw unset weights on edges with no samples.
+            row = {"source": source, "target": target}
+            if view == "active" or target in weights.get(source, {}) or source in weights.get(target, {}):
+                row["weight"] = weight
+            links.append(row)
+        return {
+            "schema_version": 1, "scenario": self.scenario.fingerprint,
+            "controller_id": slot, "served_by": self.controller_id, "incarnation": self.incarnation,
+            "sample_id": sample["sample_id"], "sampled_at": sample["sampled_at"],
+            "window_start": sample["window_start"], "sample_duration_seconds": duration,
+            "stats": {"data": weights},
+            "throughput": legacy if view == "configured" else delivered,
+            "demands": legacy, "delivered_bytes": delivered,
+            "topology": {
+                "directed": False, "multigraph": False, "graph": {},
+                "nodes": [dict(attributes, id=node) for node, attributes in graph.nodes(data=True)],
+                "links": links,
+            },
+            "resources": dict(self.topology.resources),
+            "usage": {"active_switches": active_switches, "active_ports": active_ports,
+                      "switch_egress_bps": switch_rates,
+                      "links": sorted(sorted(edge) for edge in self.topology.observation_graph(slot, "active").edges)},
+            "port_counters": {node: counters for node, counters in sample["port_counters"].items()
+                              if self.scenario.switches[node]["controller"] == slot},
+            "flow_counters": {node: counters for node, counters in sample["flow_counters"].items()
+                              if self.scenario.switches[node]["controller"] == slot},
+            "rule_timing": dict(self.rule_timing),
+        }
 
 
-class SimpleSwitchController(ControllerBase):
-    ''' Controller for the REST API to interact with the switch and get the statistics asked by the Environment '''
-    def __init__(self, req, link, data, **config):
-        super(SimpleSwitchController, self).__init__(req, link, data, **config)
-        self.simple_switch_app = data[simple_switch_instance_name]
-
-    @route('simpleswitch', url_stats, methods=['GET'])
-    def get_stats(self, req, **kwargs):
-        data = {}
-        simple_switch = self.simple_switch_app
-        if len(simple_switch.stats['data'].keys()) == 0: return Response(status=400)
-        data['stats'] = simple_switch.stats
-        data['throughput'] = simple_switch.flows
-        data['demands'] = simple_switch.demands
-        data['topology'] = nx.node_link_data(simple_switch.setup.graph) 
-        body = json.dumps(data)
-        return Response(content_type='application/json', body=body, charset='utf-8')
+def _port_is_up(datapath, port):
+    ofp = datapath.ofproto
+    return not (port.config & ofp.OFPPC_PORT_DOWN or port.state & ofp.OFPPS_LINK_DOWN)
 
 
-    @route('simpleswitch', url_actions, methods=['PUT'])
-    def put_actions(self, req, **kwargs):
-        simple_switch = self.simple_switch_app
+def _response(data, status=200):
+    return Response(status=status, content_type="application/json", body=json.dumps(data).encode())
 
+
+class EagleApi(ControllerBase):
+    def __init__(self, request, link, data, **config):
+        super(EagleApi, self).__init__(request, link, data, **config)
+        self.app = data["app"]
+
+    @route("eagle", "/network/state", methods=["GET"])
+    def get_state(self, request, **kwargs):
+        with self.app.lock:
+            return _response(self.app.presence())
+
+    @route("eagle", "/network/stats", methods=["GET"])
+    def get_stats(self, request, **kwargs):
+        slot = request.GET.get("controller_id", self.app.controller_id)
+        view = request.GET.get("view", "configured")
+        if slot not in self.app.scenario.controllers or view not in ("configured", "active"):
+            return _response({"error": "Unknown controller slot or observation view"}, 400)
+        with self.app.lock:
+            snapshot = self.app.stats(slot, view)
+            if snapshot is None:
+                return _response({"error": self.app.route_error or "Waiting for ownership and a complete sample",
+                                  "owner": self.app.topology.owners.get(slot)}, 503)
+            return _response(snapshot)
+
+    @route("eagle", "/model/actions", methods=["PUT"])
+    def put_actions(self, request, **kwargs):
+        slot = request.GET.get("controller_id", self.app.controller_id)
+        if request.GET.get("scenario", self.app.scenario.fingerprint) != self.app.scenario.fingerprint:
+            return _response({"error": "Scenario fingerprint mismatch"}, 409)
         try:
-            new_action = req.json if req.body else {}
-            if len(new_action) != 1:
-                raise ValueError
-            for value in new_action:
-                if value != 0 and value != 1:
-                    raise ValueError
-            start_time=time.time()
-            simple_switch.setup.act(new_action)
-            print('Action processing time:', time.time() - start_time) # includes changing routing
-            simple_switch.topology_change()
-
+            payload = request.json
         except ValueError:
-            return Response(status=400)
-
-        body = json.dumps(new_action)
-        return Response(content_type='application/json', body=body, charset='utf-8', status=200)
+            payload = None
+        if slot not in self.app.scenario.controllers:
+            return _response({"error": "Unknown controller slot"}, 400)
+        if not isinstance(payload, list) or len(payload) != 1 or type(payload[0]) is not int or payload[0] not in (0, 1):
+            return _response({"error": "Expected [0] or [1]"}, 400)
+        with self.app.lock:
+            if self.app.topology.owners.get(slot) != self.app.controller_id:
+                return _response({"error": "Controller does not own this slot",
+                                  "owner": self.app.topology.owners.get(slot)}, 503)
+            current = self.app.topology.resources[slot]
+            revision = [max(time.time_ns(), current["revision"][0] + 1), self.app.controller_id]
+            if current["action"] != payload[0]:
+                self.app.topology.set_support_action(slot, payload[0], revision)
+                self.app.telemetry.reset()
+                self.app.sequence += 1
+            update = self.app.topology.resources[slot]
+            accepted_at = time.time()
+            return _response(payload, 200) if request.GET.get("details") != "1" else _response({
+                "controller_id": slot, "served_by": self.app.controller_id, "action": update["action"],
+                "scenario": self.app.scenario.fingerprint,
+                "revision": update["revision"], "accepted_at": accepted_at, "changed": current != update,
+            })

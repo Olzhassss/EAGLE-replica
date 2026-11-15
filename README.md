@@ -1,196 +1,48 @@
-# EAGLE Codebase
+# EAGLE replica
 
-This repository implements **Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning with EAGLE**: a decentralized learning framework designed to autonomously add or remove supporting switches and links to address network congestion.
+This repository implements the Mininet control loop and multi-agent training protocol from Monaco et al., *Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning With EAGLE* (IEEE TNSM 2026, DOI `10.1109/TNSM.2026.3717361`).
 
----
+| Project | Runtime | Guide |
+| --- | --- | --- |
+| Mininet emulation and traffic | System Python 3 with Mininet and Open vSwitch | [Mininet guide](mininet_nets/README.md) |
+| Ryu OpenFlow controllers | Python 3.7 in `ryu_controller/.venv/` | [Ryu guide](ryu_controller/README.md) |
+| EAGLE learning and experiment tools | Modern Python in `model/.venv/` | [RL guide](model/README.md) |
 
-## Table of Contents
+## Start an experiment
 
-- [EAGLE Codebase](#eagle-codebase)
-  - [Table of Contents](#table-of-contents)
-  - [Project Overview](#project-overview)
-  - [Directory Structure](#directory-structure)
-    - [`ding/`](#ding)
-    - [`environment/`](#environment)
-    - [`partitioning/`](#partitioning)
-    - [`mininet_nets/`](#mininet_nets)
-    - [`model/`](#model)
-    - [`ryu_controller/`](#ryu_controller)
-    - [`saved_models/`](#saved_models)
-  - [Installation](#installation)
-  - [Usage](#usage)
-    - [Mininet Topology Setup](#mininet-topology-setup)
-    - [Ryu Controller Setup](#ryu-controller-setup)
-      - [Install Requirements](#install-requirements)
-      - [Start Controllers](#start-controllers)
-      - [Stop Controllers](#stop-controllers)
-    - [Reinforcement Learning (RL) Model Setup](#reinforcement-learning-rl-model-setup)
-      - [Create Python Virtual Environment](#create-python-virtual-environment)
-      - [Activate the Environment](#activate-the-environment)
-      - [Install Python Dependencies](#install-python-dependencies)
-      - [Train the RL Model](#train-the-rl-model)
-      - [Test the RL Model](#test-the-rl-model)
-    - [Traffic trace execution](#traffic-trace-execution)
+Run these commands from the repository root in separate terminals after setting up the two virtual environments.
 
----
+1. Start the three controller processes. Keep the launcher running.
 
-## Project Overview
+   ```sh
+   ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario scenarios/v0.json
+   ```
 
-This repository provides the configuration and implementation for emulating adaptive SDN autoscaling using Mininet and Ryu. The framework leverages reinforcement learning to dynamically manage network resources, ensuring efficient handling of congestion in a decentralized manner.
+2. Start the emulated network with system Python. The launcher prints its control socket for the RL runner. Add `--cli` for an interactive Mininet prompt.
 
----
+   ```sh
+   sudo python3 mininet_nets/launch_topology.py --scenario scenarios/v0.json
+   ```
 
-## Directory Structure
+3. Run a fixed policy with the deterministic synthetic flow. Substitute the socket path printed in step 2.
 
-Below is an overview of the key directories in this repository:
+   ```sh
+   model/.venv/bin/python -m model.evaluate --mininet-socket /tmp/eagle-mininet-EXAMPLE/control.sock \
+     --traffic synthetic --fixed 1,1,1 --episode-steps 8 --output runs/fixed-v0
+   ```
 
-### `ding/`
+   Use `model.train` for training and `model.evaluate --checkpoint PATH` for frozen evaluation. The RL runner starts and stops its traffic per trial. Use Ctrl-C in the Mininet and Ryu launcher terminals to stop their services.
 
-This directory is part of an external open-source framework, **DI-engine**, used to implement reinforcement learning (RL) algorithms. It is included as a dependency for RL-related functionality. Within this directory, the `policy/decentralized.py` includes our custom policy implementation and `model/template/dec_mavac.py` the neural network definition. This module enables a multi-agent learning setup where individual agents independently learn strategies while coordinating collaboratively to optimize overall network performance.
+[Documentation.md](Documentation.md) describes the project boundaries, control loop, and replication workflow. [Scenarios](scenarios/README.md) lists the shared data and the remaining research inputs. [Partitioning](partitioning/README.md) runs offline in the RL environment.
 
-For more information about DI-engine, visit the [DI-engine GitHub repository](https://github.com/opendilab/DI-engine).
+## Traffic trace execution
 
-### `environment/`
+Prepare the local Digital Corpora capture and generate a scenario with separate training and held-out traffic profiles.
 
-Contains modules for managing distributed environments and configurations. The environment collects observations from the controller, sends them to the RL model, receives actions from the model, and translates them into network configurations.
-
-### `partitioning/`
-
-Provides tools for graph partitioning and community detection.
-
-### `mininet_nets/`
-
-Contains topology configuration and traffic-related files for Mininet.
-
-### `model/`
-
-Contains scripts for training and testing decentralized reinforcement learning agents.
-
-### `ryu_controller/`
-
-Contains the implementation of an SDN controller that collects statistics from switches and communicates with the environment.
-
-### `saved_models/`
-
-Contains pre-trained model weights ready for testing.
-
----
-
-## Installation
-
-This project requires **Mininet** and **Ryu** installed on an Ubuntu system. Please refer to the following links for installation instructions:
-
-- [Mininet Installation Guide](https://mininet.org/download/)
-- [Ryu Installation Guide](https://ryu.readthedocs.io/en/latest/getting_started.html)
-
----
-
-## Usage
-
-### Mininet Topology Setup
-
-Navigate to the Mininet network directory and start the custom topology:
-
-```bash
-cd mininet_nets/
-sudo python custom_topology_v1.py
+```sh
+model/.venv/bin/python -m model.prepare_traces 5gb-tcp-connection.pcap.gz --output runs/corpora-v0
 ```
 
-This command will:
+Start both launchers with `--scenario runs/corpora-v0/scenario.json`. Pass the same scenario to training or evaluation and select `--traffic pcap-train` or `--traffic pcap-eval`. See the [trace run commands and study inputs](scenarios/README.md#run-the-digital-corpora-capture).
 
-- Start Mininet
-- Initialize the network topology
-- Launch the Mininet CLI
-
----
-
-### Ryu Controller Setup
-
-Navigate to the controller directory:
-
-```bash
-cd ryu_controller/
-```
-
-#### Install Requirements
-
-Install the system-wide dependencies listed in `ryu_requirements.txt`.
-
-#### Start Controllers
-
-```bash
-./start_controllers.sh
-```
-
-#### Stop Controllers
-
-```bash
-./stop_controllers.sh
-```
-
----
-
-### Reinforcement Learning (RL) Model Setup
-
-#### Create Python Virtual Environment
-
-```bash
-python3.7 -m venv venvrl
-```
-
-#### Activate the Environment
-
-```bash
-source venvrl/bin/activate
-```
-
-#### Install Python Dependencies
-
-```bash
-pip install -r rl_requirements.txt
-```
-
-#### Train the RL Model
-
-To execute the training script:
-
-```bash
-cd model/
-python train_decentralized.py
-```
-
-The neural network weights are stored in `saved_models/`.
-
-#### Test the RL Model
-
-After specifying the correct weights path, you can start the testing phase:
-
-```bash
-cd model/
-python test_decentralized.py
-```
-
-### Traffic trace execution
-
-Download the 5GB TCP trace available at Netresec:
-https://digitalcorpora.org/corpora/network-packet-dumps/
-
-Update the MAC addresses so that they match the hosts in the Mininet network using the following command:
-
-```bash
-tcprewrite --enet-dmac=<dst_MAC> --enet-smac=<src_MAC> --infile=<input_pcap> --outfile=<output_pcap>
-```
-
-The generated traffic traces for each sending host can be placed in the `mininet_nets/` directory and can be replayed via:
-
-```bash
-sudo tcpreplay -i h1-eth0 --stats=1 <h1_filename>.pcap
-```
-
-If scripts are preferred to run the traffic, update the `start_traffic.py` script accordingly to reference the traffic scripts.
-
-Once the network is up, you can start the traffic inside the Mininet CLI in the following way:
-
-```bash
-py exec(open('start_traffic.py').read())
-```
+The current application uses PyTorch directly. The original DI-engine tree remains available for the planned compatibility comparison. The original experiment scripts and dependency files are available in the baseline Git revision `2577b26`.

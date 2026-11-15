@@ -1,0 +1,123 @@
+"""Coordinate one action and one telemetry window for every logical agent."""
+
+from concurrent.futures import ThreadPoolExecutor
+import time
+
+from gymnasium import spaces
+import numpy as np
+
+from .controller_client import ControllerUnavailable, JointActionError
+from .reward import compute_reward
+
+
+class JointEnvironment:
+    """Actions [agent] are binary and observations expose global_obs [features].
+
+    Rewards are a float vector in scenario order. The configured episode horizon
+    is a time limit, so it truncates a transition without terminating the MDP.
+    """
+
+    def __init__(self, scenario, settings, client, emulation, encoder, encode_local=None):
+        self.scenario = scenario
+        self.settings = settings
+        self.client = client
+        self.emulation = emulation
+        self.encoder = encoder
+        self.encode_local = encode_local
+        self.slots = scenario.controller_ids
+        self.action_space = spaces.MultiDiscrete(np.full(len(self.slots), 2))
+        self.observation_space = spaces.Dict({
+            "global_obs": spaces.Box(-np.inf, np.inf, shape=(encoder.size,), dtype=np.float32),
+        })
+        self.reward_space = spaces.Box(-np.inf, np.inf, shape=(len(self.slots),), dtype=np.float32)
+        self.sample_timeout = settings.get("sample_timeout_seconds", 15)
+        self.steps = 0
+        self.snapshots = None
+        self.traffic = None
+
+    def _wait_for_samples(self, after, expected):
+        deadline = time.monotonic() + self.sample_timeout
+        last = "no samples"
+        mode = self.settings["observation_view"]
+        with ThreadPoolExecutor(max_workers=len(self.slots)) as executor:
+            while time.monotonic() < deadline:
+                jobs = [executor.submit(self.client.fetch_stats, slot, mode) for slot in self.slots]
+                try:
+                    rows = [job.result() for job in jobs]
+                except ControllerUnavailable as error:
+                    last = str(error)
+                else:
+                    earliest = min(row["sampled_at"] for row in rows)
+                    latest = max(row["sampled_at"] for row in rows)
+                    poll = self.scenario.data["telemetry"]["poll_seconds"]
+                    if (latest - earliest <= 3 * poll
+                            and time.time() - earliest <= 3 * poll
+                            and all(row["window_start"] >= after for row in rows)
+                            and all(
+                                row["resources"][slot]["action"] == ack["action"]
+                                and row["resources"][slot]["revision"] >= ack["revision"]
+                                for row in rows for slot, ack in expected.items()
+                            )):
+                        return rows
+                    last = "waiting for post-action, synchronized telemetry"
+                time.sleep(0.15)
+        raise ControllerUnavailable(last)
+
+    def _observe(self):
+        topologies = [row["topology"] for row in self.snapshots]
+        embeddings = (self.encode_local(topologies) if self.encode_local
+                      else [self.encoder.embed_local(topology) for topology in topologies])
+        raw = np.concatenate(embeddings)
+        return {"global_obs": self.encoder.normalize(raw)}, raw.tolist()
+
+    def _apply(self, actions):
+        mapped = dict(zip(self.slots, map(int, actions), strict=True))
+        acknowledgments = self.client.apply_actions(mapped, time.monotonic() + self.sample_timeout)
+        try:
+            physical = self.emulation.apply_resources(mapped, self.settings["resource_mode"])
+        except (OSError, ValueError, RuntimeError) as error:
+            raise JointActionError(acknowledgments, {"physical resources": str(error)}) from error
+        return acknowledgments, physical
+
+    def reset(self, traffic_profile):
+        """Restore hardware, initial action and statistics before starting a trial."""
+        self.steps = 0
+        self.snapshots = None
+        self.emulation.reset(self.scenario.fingerprint, self.settings["resource_mode"], traffic_profile)
+        actions, physical = self._apply(self.scenario.initial_actions)
+        after = max([physical.get("applied_at", 0)] + [ack["accepted_at"] for ack in actions.values()])
+        self._wait_for_samples(after, actions)
+        self.traffic = self.emulation.start_traffic(traffic_profile)
+        starts = self.traffic.get("started_at", time.time()) + self.settings["warmup_seconds"]
+        time.sleep(max(0.0, starts - time.time()))
+        self.snapshots = self._wait_for_samples(starts, actions)
+        observation, raw = self._observe()
+        return observation, {"raw_embedding": raw, "snapshots": self.snapshots,
+                             "traffic": self.traffic, "acks": actions, "physical": physical}
+
+    def step(self, actions):
+        """Submit all actions before collecting the next fresh telemetry window."""
+        actions = np.asarray(actions)
+        if not self.action_space.contains(actions) or not np.issubdtype(actions.dtype, np.integer):
+            raise ValueError("Expected one integer binary action per controller")
+        started = time.monotonic()
+        faults = [
+            {"event": event, "result": self.emulation.fault(event)}
+            for event in self.settings["failures"] if event["step"] == self.steps
+        ]
+        acknowledgments, physical = self._apply(actions)
+        after = max([physical.get("applied_at", 0)] + [ack["accepted_at"] for ack in acknowledgments.values()])
+        time.sleep(max(0.0, self.settings["decision_seconds"] - (time.monotonic() - started)))
+        try:
+            self.snapshots = self._wait_for_samples(after, acknowledgments)
+        except ControllerUnavailable as error:
+            raise JointActionError(acknowledgments, {"post-action telemetry": str(error)}) from error
+        obs, raw = self._observe()
+        parts = [compute_reward(row, self.settings["reward"]) for row in self.snapshots]
+        rewards = np.asarray([part["reward"] for part in parts], dtype=np.float32)
+        self.steps += 1
+        return obs, rewards, False, self.steps >= self.settings["episode_steps"], {
+            "raw_embedding": raw, "snapshots": self.snapshots, "acks": acknowledgments,
+            "physical": physical, "reward_components": parts, "faults": faults,
+            "step_seconds": time.monotonic() - started,
+        }
