@@ -57,7 +57,7 @@ dependencies = [
   "stevedore==3.5.2",
   "tabulate==0.9.0",
   "tinyrpc==1.0.4",
-  "torch==1.12.1",
+  "torch>=1.12.1",
   "trueskill==0.4.5",
   "typing-extensions==4.7.1",
   "urlobject==2.4.3",
@@ -67,10 +67,3 @@ dependencies = [
   "yapf==0.29.0",
   "zipp==3.15.0",
 ]
-
-[project.scripts]
-eagle-replica = "eagle_replica:main"
-
-[build-system]
-requires = ["uv_build>=0.13.7,<0.14.0"]
-build-backend = "uv_build"

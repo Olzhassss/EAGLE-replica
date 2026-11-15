@@ -17,7 +17,6 @@ DI-treetensor==0.4.0
 dill==0.3.7
 dnspython==1.16.0
 docker-pycreds==0.4.0
--e git+ssh://git@github.com/Olzhassss/EAGLE-replica.git@316712cb17e1bc73160b748b5314fee9482fabe2#egg=eagle_replica
 easydict==1.9
 enum-tools==0.9.0.post1
 eventlet==0.30.2
@@ -37,6 +36,7 @@ hbutils==0.8.0
 hickle==5.0.2
 idna==2.10
 importlib-metadata==6.7.0
+inflect==6.0.5
 itsdangerous==1.1.0
 jax-jumpy==1.0.0
 Jinja2==2.10.1
@@ -68,6 +68,7 @@ protobuf==4.24.4
 psutil==7.2.2
 py==1.11.0
 pycparser==2.21
+pydantic==1.10.27
 Pygments==2.17.2
 PyGSP==0.5.1
 pynng==0.7.2
@@ -87,6 +88,7 @@ responses==0.12.1
 rfc3986==2.0.0
 rich==13.8.1
 Routes==2.5.1
+ryu==4.34
 scikit-learn==1.0.2
 scipy==1.7.3
 sentry-sdk==2.74.0

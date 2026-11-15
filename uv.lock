@@ -286,7 +286,7 @@ wheels = [
 [[package]]
 name = "eagle-replica"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "certifi" },
     { name = "charset-normalizer" },
@@ -401,7 +401,7 @@ requires-dist = [
     { name = "stevedore", specifier = "==3.5.2" },
     { name = "tabulate", specifier = "==0.9.0" },
     { name = "tinyrpc", specifier = "==1.0.4" },
-    { name = "torch", specifier = "==1.12.1" },
+    { name = "torch", specifier = ">=1.12.1" },
     { name = "trueskill", specifier = "==0.4.5" },
     { name = "typing-extensions", specifier = "==4.7.1" },
     { name = "urlobject", specifier = "==2.4.3" },
