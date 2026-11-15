@@ -1,14 +1,25 @@
 """Run one scheduled TCP transfer or an explicitly configured replay command."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import signal
 import socket
 import time
+from types import FrameType
 
 
-def send_tcp(host, port, size_bytes, rate_bps, starts_at, timeout, result_path):
+def send_tcp(
+    host: str,
+    port: int,
+    size_bytes: int,
+    rate_bps: int,
+    starts_at: float,
+    timeout: float,
+    result_path: str,
+) -> None:
     time.sleep(max(0.0, starts_at - time.time()))
     started = time.time()
     sent = 0
@@ -22,7 +33,7 @@ def send_tcp(host, port, size_bytes, rate_bps, starts_at, timeout, result_path):
                 if budget <= 0:
                     raise TimeoutError("TCP transfer timed out")
                 connection.settimeout(budget)
-                sent += connection.send(data[:min(len(data), size_bytes - sent)])
+                sent += connection.send(data[: min(len(data), size_bytes - sent)])
                 wait = started + sent * 8 / rate_bps - time.time()
                 if wait > 0 and sent < size_bytes:
                     time.sleep(min(wait, max(0, deadline - time.monotonic())))
@@ -32,7 +43,9 @@ def send_tcp(host, port, size_bytes, rate_bps, starts_at, timeout, result_path):
         json.dump({"started_at": started, "sent_bytes": sent, "error": error}, output)
 
 
-def receive_tcp(port, expected_bytes, timeout, result_path):
+def receive_tcp(
+    port: int, expected_bytes: int, timeout: float, result_path: str
+) -> None:
     received = 0
     completed = None
     first_byte = None
@@ -58,16 +71,21 @@ def receive_tcp(port, expected_bytes, timeout, result_path):
                     received += len(data)
                 if received >= expected_bytes:
                     completed = time.time()
-        except (socket.timeout, InterruptedError):
+        except (TimeoutError, InterruptedError):
             pass
         finally:
             with open(result_path, "w") as output:
-                json.dump({
-                    "first_byte_at": first_byte, "completed_at": completed, "received_bytes": received,
-                }, output)
+                json.dump(
+                    {
+                        "first_byte_at": first_byte,
+                        "completed_at": completed,
+                        "received_bytes": received,
+                    },
+                    output,
+                )
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
     sender = commands.add_parser("send")
@@ -88,7 +106,7 @@ def main():
     args = vars(parser.parse_args())
     operation = args.pop("operation")
 
-    def finish_on_signal(signum, frame):
+    def finish_on_signal(signum: int, frame: FrameType | None) -> None:
         raise InterruptedError("Trial ended")
 
     if operation in ("send", "receive"):

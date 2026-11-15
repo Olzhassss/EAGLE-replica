@@ -1,15 +1,27 @@
 """Local average-reward actor-critic updates and per-agent checkpoint state."""
 
+from __future__ import annotations
+
+from typing import Any
+
 import torch
+from numpy.typing import NDArray
 from torch.distributions import Categorical
 from torch.nn import functional as F
 
 from .actor_critic import make_actor, make_value_network
 from .consensus import mix_contributions, pack_contribution
+from .observations import ObservationEncoder
 
 
 class AgentLearner:
-    def __init__(self, slot, encoder, settings, seed):
+    def __init__(
+        self,
+        slot: str,
+        encoder: ObservationEncoder,
+        settings: dict[str, Any],
+        seed: int,
+    ) -> None:
         self.encoder = encoder
         self.index = encoder.controller_ids.index(slot)
         self.settings = settings
@@ -20,21 +32,29 @@ class AgentLearner:
         self.estimator = make_value_network(encoder.size + len(encoder.controller_ids))
         self.optimizers = {
             "actor": torch.optim.Adam(self.actor.parameters(), lr=settings["actor_lr"]),
-            "critic": torch.optim.Adam(self.critic.parameters(), lr=settings["critic_lr"]),
-            "estimator": torch.optim.Adam(self.estimator.parameters(), lr=settings["estimator_lr"]),
+            "critic": torch.optim.Adam(
+                self.critic.parameters(), lr=settings["critic_lr"]
+            ),
+            "estimator": torch.optim.Adam(
+                self.estimator.parameters(), lr=settings["estimator_lr"]
+            ),
         }
         self.mu = 0.0
 
-    def embed(self, topology):
+    def embed(self, topology: dict[str, Any]) -> NDArray:
         return self.encoder.embed_local(topology)
 
     @torch.inference_mode()
-    def decide(self, observation):
+    def decide(self, observation: list[float] | NDArray) -> int:
         """Sample one action for this slot from its categorical actor."""
         logits = self.actor(torch.as_tensor(observation, dtype=torch.float32))
-        return int(torch.multinomial(logits.softmax(dim=-1), 1, generator=self.generator).item())
+        return int(
+            torch.multinomial(
+                logits.softmax(dim=-1), 1, generator=self.generator
+            ).item()
+        )
 
-    def learn(self, mode, batch):
+    def learn(self, mode: str, batch: dict[str, list[Any]]) -> dict[str, float]:
         """Update on a batch of (state, joint action, rewards, next state, terminated)."""
         states = torch.as_tensor(batch["state"], dtype=torch.float32)
         next_states = torch.as_tensor(batch["next_state"], dtype=torch.float32)
@@ -55,7 +75,9 @@ class AgentLearner:
         predicted_reward = estimate.detach()
         metrics = {}
         if mode in ("pretrain", "online"):
-            metrics["estimator_loss"] = self._optimize("estimator", F.mse_loss(estimate, rewards))
+            metrics["estimator_loss"] = self._optimize(
+                "estimator", F.mse_loss(estimate, rewards)
+            )
         if mode == "pretrain":
             return metrics
         value = self.critic(states).squeeze(-1)
@@ -65,45 +87,67 @@ class AgentLearner:
             advantage = predicted_reward - self.mu + future - value
         metrics["critic_loss"] = self._optimize("critic", F.mse_loss(value, target))
         policy = Categorical(logits=self.actor(states))
-        metrics["actor_loss"] = self._optimize("actor", -(policy.log_prob(actions[:, self.index]) * advantage).mean())
+        metrics["actor_loss"] = self._optimize(
+            "actor", -(policy.log_prob(actions[:, self.index]) * advantage).mean()
+        )
         beta = self.settings["critic_lr"]
         self.mu = (1 - beta) * self.mu + beta * rewards.mean().item()
         metrics["mu"] = self.mu
         return metrics
 
-    def _optimize(self, component, loss):
+    def _optimize(self, component: str, loss: torch.Tensor) -> float:
         optimizer = self.optimizers[component]
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
         return loss.item()
 
-    def _shared_components(self, mode):
+    def _shared_components(self, mode: str) -> dict[str, torch.nn.Module]:
         if mode == "pretrain":
             return {"estimator": self.estimator}
         if mode == "frozen":
             return {"critic": self.critic}
         return {"critic": self.critic, "estimator": self.estimator}
 
-    def contribution(self, mode, round_number, fraction):
-        return pack_contribution(round_number, self._shared_components(mode),
-                                 self.mu if mode != "pretrain" else None, fraction)
+    def contribution(self, mode: str, round_number: int, fraction: float) -> bytes:
+        return pack_contribution(
+            round_number,
+            self._shared_components(mode),
+            self.mu if mode != "pretrain" else None,
+            fraction,
+        )
 
-    def mix(self, mode, round_number, local_weight, peers):
-        updated = mix_contributions(round_number, self._shared_components(mode),
-                                    self.mu if mode != "pretrain" else None, local_weight, peers)
+    def mix(
+        self,
+        mode: str,
+        round_number: int,
+        local_weight: float,
+        peers: list[tuple[float, bytes]],
+    ) -> None:
+        updated = mix_contributions(
+            round_number,
+            self._shared_components(mode),
+            self.mu if mode != "pretrain" else None,
+            local_weight,
+            peers,
+        )
         if updated is not None:
             self.mu = updated
 
-    def state_dict(self):
+    def state_dict(self) -> dict[str, Any]:
         return {
-            "actor": self.actor.state_dict(), "critic": self.critic.state_dict(),
+            "actor": self.actor.state_dict(),
+            "critic": self.critic.state_dict(),
             "estimator": self.estimator.state_dict(),
-            "optimizers": {name: optimizer.state_dict() for name, optimizer in self.optimizers.items()},
-            "mu": self.mu, "action_rng": self.generator.get_state(),
+            "optimizers": {
+                name: optimizer.state_dict()
+                for name, optimizer in self.optimizers.items()
+            },
+            "mu": self.mu,
+            "action_rng": self.generator.get_state(),
         }
 
-    def load_state_dict(self, state):
+    def load_state_dict(self, state: dict[str, Any]) -> None:
         self.actor.load_state_dict(state["actor"])
         self.critic.load_state_dict(state["critic"])
         self.estimator.load_state_dict(state["estimator"])

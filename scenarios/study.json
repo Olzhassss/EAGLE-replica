@@ -5,7 +5,11 @@
   "episode_steps": null,
   "warmup_seconds": null,
   "observation_view": "active",
-  "embedding": {"order": 1, "eval_points": 1, "normalization": "source"},
+  "embedding": {
+    "order": 1,
+    "eval_points": 1,
+    "normalization": "source"
+  },
   "reward": {
     "kind": "power",
     "alpha": 0.5,
@@ -23,15 +27,53 @@
     "estimator_lr": 0.001,
     "batch_size": null,
     "estimator_input": "current_state_binary_actions",
-    "pruning": {"mode": "dynamic", "warmup_rounds": 5, "ramp_rounds": null},
+    "pruning": {
+      "mode": "dynamic",
+      "warmup_rounds": 5,
+      "ramp_rounds": null
+    },
     "stages": [
-      {"name": "estimator-pretraining", "mode": "pretrain", "traffic": null, "episodes": null},
-      {"name": "TrEnv1", "mode": "frozen", "traffic": null, "episodes": null},
-      {"name": "TrEnv2", "mode": "frozen", "traffic": null, "episodes": null},
-      {"name": "TrEnv3", "mode": "frozen", "traffic": null, "episodes": null},
-      {"name": "TrEnv4", "mode": "frozen", "traffic": null, "episodes": null},
-      {"name": "TrEnv5", "mode": "frozen", "traffic": null, "episodes": null}
+      {
+        "name": "estimator-pretraining",
+        "mode": "pretrain",
+        "traffic": null,
+        "episodes": null
+      },
+      {
+        "name": "TrEnv1",
+        "mode": "frozen",
+        "traffic": null,
+        "episodes": null
+      },
+      {
+        "name": "TrEnv2",
+        "mode": "frozen",
+        "traffic": null,
+        "episodes": null
+      },
+      {
+        "name": "TrEnv3",
+        "mode": "frozen",
+        "traffic": null,
+        "episodes": null
+      },
+      {
+        "name": "TrEnv4",
+        "mode": "frozen",
+        "traffic": null,
+        "episodes": null
+      },
+      {
+        "name": "TrEnv5",
+        "mode": "frozen",
+        "traffic": null,
+        "episodes": null
+      }
     ]
   },
-  "placement": {"capacity": 6, "difference": 2, "rho": 0.01}
+  "placement": {
+    "capacity": 6,
+    "difference": 2,
+    "rho": 0.01
+  }
 }

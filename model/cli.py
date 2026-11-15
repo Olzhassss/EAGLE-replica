@@ -1,11 +1,21 @@
 """Arguments shared by the training and evaluation entrypoints."""
 
+from __future__ import annotations
+
+import argparse
 from pathlib import Path
+from typing import Any
 
-from .settings import DEFAULT_SCENARIO, DEFAULT_SETTINGS, load_scenario, load_settings
+from .settings import (
+    DEFAULT_SCENARIO,
+    DEFAULT_SETTINGS,
+    Scenario,
+    load_scenario,
+    load_settings,
+)
 
 
-def add_trial_arguments(parser):
+def add_trial_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--scenario", type=Path, default=DEFAULT_SCENARIO)
     parser.add_argument("--settings", type=Path, default=DEFAULT_SETTINGS)
     parser.add_argument("--output", type=Path, required=True, help="New run directory")
@@ -19,13 +29,22 @@ def add_trial_arguments(parser):
     parser.add_argument("--keep-captures", action="store_true")
 
 
-def parse_trial_inputs(parser, args, *, normalization=None):
+def parse_trial_inputs(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    *,
+    normalization: str | None = None,
+) -> tuple[Scenario, dict[str, Any]]:
     if args.episodes <= 0 or args.seed < 0:
         parser.error("Episodes must be positive and seed must be nonnegative")
     try:
         scenario = load_scenario(args.scenario)
-        settings = load_settings(args.settings, episode_steps=args.episode_steps,
-                                 resource_mode=args.resource_mode, normalization=normalization)
+        settings = load_settings(
+            args.settings,
+            episode_steps=args.episode_steps,
+            resource_mode=args.resource_mode,
+            normalization=normalization,
+        )
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))
     return scenario, settings

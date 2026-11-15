@@ -1,14 +1,23 @@
 """OpenFlow counter samples, coherent poll windows, and rate conversion."""
 
+from __future__ import annotations
+
 import time
+from typing import TYPE_CHECKING, Any
 
 from ryu_controller.openflow_rules import COOKIE, COOKIE_MASK, TABLE_ID
+
+from .topology_state import Scenario
+
+if TYPE_CHECKING:
+    from ryu.controller.controller import Datapath
+    from ryu.ofproto.ofproto_v1_3_parser import OFPFlowStatsReply, OFPPortStatsReply
 
 
 class Telemetry:
     """Correlate multipart replies within a single round and topology revision."""
 
-    def __init__(self, scenario):
+    def __init__(self, scenario: Scenario) -> None:
         self.scenario = scenario
         self.pending = None
         self.previous = None
@@ -18,14 +27,17 @@ class Telemetry:
             row["mac"].lower(): name for name, row in scenario.hosts.items()
         }
 
-    def reset(self):
+    def reset(self) -> None:
         self.pending = self.previous = self.latest = None
 
-    def request_round(self, datapaths, generation):
+    def request_round(self, datapaths: dict[str, Datapath], generation: int) -> None:
         started = time.time()
         self.pending = {
-            "started_at": started, "generation": generation, "requests": {},
-            "ports": {}, "flows": {},
+            "started_at": started,
+            "generation": generation,
+            "requests": {},
+            "ports": {},
+            "flows": {},
         }
         if not datapaths:
             return
@@ -37,8 +49,14 @@ class Telemetry:
             commands.append((switch, "ports", port_request))
             if any(node in self.scenario.hosts for node in self.scenario.graph[switch]):
                 flow_request = parser.OFPFlowStatsRequest(
-                    datapath, 0, TABLE_ID, ofp.OFPP_ANY, ofp.OFPG_ANY,
-                    COOKIE, COOKIE_MASK, parser.OFPMatch()
+                    datapath,
+                    0,
+                    TABLE_ID,
+                    ofp.OFPP_ANY,
+                    ofp.OFPG_ANY,
+                    COOKIE,
+                    COOKIE_MASK,
+                    parser.OFPMatch(),
                 )
                 commands.append((switch, "flows", flow_request))
         for switch, kind, request in commands:
@@ -48,7 +66,7 @@ class Telemetry:
         for _, _, request in commands:
             request.datapath.send_msg(request)
 
-    def receive(self, message):
+    def receive(self, message: OFPFlowStatsReply | OFPPortStatsReply) -> None:
         poll = self.pending
         key = (message.datapath, message.xid)
         if poll is None or key not in poll["requests"]:
@@ -59,7 +77,8 @@ class Telemetry:
             return
         if kind == "ports":
             poll[kind][switch] = {
-                stat.port_no: [stat.rx_bytes, stat.tx_bytes] for stat in parts
+                stat.port_no: [stat.rx_bytes, stat.tx_bytes]
+                for stat in parts
                 if stat.port_no in self.scenario.ports[switch]
                 and max(stat.rx_bytes, stat.tx_bytes) < (1 << 64) - 1
             }
@@ -72,7 +91,10 @@ class Telemetry:
                 target = self.host_for_mac.get(stat.match.get("eth_dst"))
                 if not source or not target:
                     continue
-                if target in self.scenario.graph[switch] or source in self.scenario.graph[switch]:
+                if (
+                    target in self.scenario.graph[switch]
+                    or source in self.scenario.graph[switch]
+                ):
                     counters[(source, target)] = stat.byte_count
             poll[kind][switch] = counters
         del poll["requests"][key]
@@ -80,7 +102,7 @@ class Telemetry:
             self.pending = None
             self._publish(poll)
 
-    def _publish(self, current):
+    def _publish(self, current: dict[str, Any]) -> None:
         previous = self.previous
         self.previous = current
         if previous is None or previous["generation"] != current["generation"]:
@@ -92,21 +114,28 @@ class Telemetry:
         for switch, counters in current["ports"].items():
             old = previous["ports"].get(switch, {})
             ports[switch] = {
-                port: [counter_delta(new, before) for new, before in zip(values, old[port])]
-                for port, values in counters.items() if port in old
+                port: [
+                    counter_delta(new, before) for new, before in zip(values, old[port])
+                ]
+                for port, values in counters.items()
+                if port in old
             }
         flows = {}
         for switch, counters in current["flows"].items():
             old = previous["flows"].get(switch, {})
             flows[switch] = {
-                pair: counter_delta(value, old[pair]) for pair, value in counters.items()
+                pair: counter_delta(value, old[pair])
+                for pair, value in counters.items()
                 if pair in old
             }
         self.sample_id += 1
         self.latest = {
             "sample_id": self.sample_id,
-            "window_start": previous["started_at"], "sampled_at": current["started_at"],
-            "sample_duration_seconds": elapsed, "ports": ports, "flows": flows,
+            "window_start": previous["started_at"],
+            "sampled_at": current["started_at"],
+            "sample_duration_seconds": elapsed,
+            "ports": ports,
+            "flows": flows,
             "port_counters": current["ports"],
             "flow_counters": {
                 node: {" ".join(pair): value for pair, value in rows.items()}
@@ -115,12 +144,16 @@ class Telemetry:
         }
 
 
-def counter_delta(value, previous):
+def counter_delta(value: int, previous: int) -> int:
     """Treat a lower counter as a reset at or before the current sample."""
     return value - previous if value >= previous else value
 
 
-def compute_link_utilization(byte_delta, duration_seconds, capacity_bps):
+def compute_link_utilization(
+    byte_delta: int,
+    duration_seconds: float,
+    capacity_bps: int,
+) -> float:
     """Convert one direction's byte delta to the bounded utilization weight."""
     ratio = byte_delta * 8 / duration_seconds / capacity_bps
     return 0.0 if ratio < 0.01 else min(ratio, 1.0)

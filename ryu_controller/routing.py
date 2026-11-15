@@ -1,10 +1,19 @@
 """Pure planning for Ethernet flows in the active scenario graph."""
 
+from __future__ import annotations
+
 import crc32c
 import networkx as nx
 
+from .topology_state import Scenario
 
-def plan_forwarding_rules(graph, scenario):
+ForwardingRules = dict[tuple[str, str], int]
+
+
+def plan_forwarding_rules(
+    graph: nx.Graph,
+    scenario: Scenario,
+) -> dict[str, ForwardingRules]:
     """Map each active switch to {(source MAC, destination MAC): output port}.
 
     Pick one end-to-end shortest path for each ordered host pair. Prefer paths

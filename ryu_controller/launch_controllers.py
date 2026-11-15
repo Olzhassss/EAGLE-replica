@@ -1,21 +1,24 @@
 """Run and stop the scenario's Ryu processes using the local Python 3.7 venv."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
-from pathlib import Path
 import signal
 import socketserver
 import subprocess
 import sys
 import tempfile
-
+from pathlib import Path
+from types import FrameType
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ControllerSupervisor:
-    def __init__(self, scenario_path, selected):
+    def __init__(self, scenario_path: Path, selected: list[str] | None) -> None:
         self.scenario_path = scenario_path.resolve()
         scenario = json.loads(self.scenario_path.read_text())
         if scenario.get("schema_version") != 1:
@@ -24,24 +27,43 @@ class ControllerSupervisor:
         if selected:
             if set(selected) - self.controllers.keys():
                 raise ValueError("Unknown selected controller ID")
-            self.controllers = {key: row for key, row in self.controllers.items() if key in selected}
+            self.controllers = {
+                key: row for key, row in self.controllers.items() if key in selected
+            }
         self.processes = {}
 
-    def start(self, controller_id):
+    def start(self, controller_id: str) -> None:
         process = self.processes.get(controller_id)
         if process is not None and process.poll() is None:
             return
         controller = self.controllers[controller_id]
         bind_address = controller.get("listen_host", controller["host"])
-        env = dict(os.environ, EAGLE_SCENARIO=str(self.scenario_path), EAGLE_CONTROLLER_ID=controller_id)
-        self.processes[controller_id] = subprocess.Popen([
-            sys.executable, "-c", "from ryu.cmd.manager import main; main()",
-            "--ofp-listen-host", bind_address, "--ofp-tcp-listen-port", str(controller["openflow_port"]),
-            "--wsapi-host", bind_address, "--wsapi-port", str(controller["http_port"]),
-            "ryu_controller.controller",
-        ], cwd=str(ROOT), env=env, start_new_session=True)
+        env = dict(
+            os.environ,
+            EAGLE_SCENARIO=str(self.scenario_path),
+            EAGLE_CONTROLLER_ID=controller_id,
+        )
+        self.processes[controller_id] = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "from ryu.cmd.manager import main; main()",
+                "--ofp-listen-host",
+                bind_address,
+                "--ofp-tcp-listen-port",
+                str(controller["openflow_port"]),
+                "--wsapi-host",
+                bind_address,
+                "--wsapi-port",
+                str(controller["http_port"]),
+                "ryu_controller.controller",
+            ],
+            cwd=str(ROOT),
+            env=env,
+            start_new_session=True,
+        )
 
-    def stop(self, controller_id):
+    def stop(self, controller_id: str) -> None:
         process = self.processes.get(controller_id)
         if process is None or process.poll() is not None:
             return
@@ -52,7 +74,7 @@ class ControllerSupervisor:
             process.kill()
             process.wait()
 
-    def command(self, command):
+    def command(self, command: dict[str, Any]) -> dict[str, dict[str, int | None]]:
         operation = command.get("operation")
         if operation == "restore":
             for controller_id in self.controllers:
@@ -65,12 +87,14 @@ class ControllerSupervisor:
             handler(controller_id)
         elif operation != "status":
             raise ValueError("Unknown supervisor operation")
-        return {name: {"pid": process.pid, "exit_code": process.poll()}
-                for name, process in self.processes.items()}
+        return {
+            name: {"pid": process.pid, "exit_code": process.poll()}
+            for name, process in self.processes.items()
+        }
 
 
 class SupervisorRequest(socketserver.StreamRequestHandler):
-    def handle(self):
+    def handle(self) -> None:
         self.connection.settimeout(5)
         try:
             command = json.loads(self.rfile.readline(8192))
@@ -82,16 +106,20 @@ class SupervisorRequest(socketserver.StreamRequestHandler):
         self.wfile.write(json.dumps(reply).encode() + b"\n")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", type=Path, default=ROOT / "scenarios/v0.json")
-    parser.add_argument("--controller", action="append", help="Launch only this controller ID on this host")
+    parser.add_argument(
+        "--controller",
+        action="append",
+        help="Launch only this controller ID on this host",
+    )
     args = parser.parse_args()
     if sys.version_info[:2] != (3, 7) or sys.prefix == sys.base_prefix:
         parser.error("Launch from the controller's Python 3.7 virtual environment")
     supervisor = ControllerSupervisor(args.scenario, args.controller)
 
-    def stop_on_signal(signum, frame):
+    def stop_on_signal(signum: int, frame: FrameType | None) -> None:
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop_on_signal)

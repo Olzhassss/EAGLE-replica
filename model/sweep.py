@@ -1,29 +1,38 @@
 """Schedule named evaluation cells using existing controller and Mininet sessions."""
 
+from __future__ import annotations
+
 import argparse
 import json
-from pathlib import Path
 import re
 import subprocess
 import sys
+from pathlib import Path
+from typing import Any
 
 from .settings import ROOT
 
 
-def run_matrix(manifest, directory):
+def run_matrix(manifest: dict[str, Any], directory: Path) -> bool:
     """Run the same seeds in every cell and retain exit codes even on failure."""
     if manifest.get("schema_version") != 1:
         raise ValueError("Expected a schema_version 1 evaluation matrix")
     seeds = manifest.get("seeds", list(range(10)))
-    if not seeds or len(set(seeds)) != len(seeds) or any(type(seed) is not int or seed < 0 for seed in seeds):
+    if (
+        not seeds
+        or len(set(seeds)) != len(seeds)
+        or any(type(seed) is not int or seed < 0 for seed in seeds)
+    ):
         raise ValueError("Use distinct nonnegative matrix seeds")
     cells = manifest["cells"]
     identifiers = set()
     protected = {"--seed", "--output", "--condition", "--method"}
     for cell in cells:
         condition, method = cell["condition"], cell["method"]
-        if any(not re.fullmatch(r"[A-Za-z0-9_.-]+", value) or value in (".", "..")
-               for value in (condition, method)):
+        if any(
+            not re.fullmatch(r"[A-Za-z0-9_.-]+", value) or value in (".", "..")
+            for value in (condition, method)
+        ):
             raise ValueError("Use path-safe condition and method names")
         if (condition, method) in identifiers:
             raise ValueError("Each condition/method pair may appear once")
@@ -40,18 +49,40 @@ def run_matrix(manifest, directory):
                 output = directory / condition / method / str(seed)
                 output.parent.mkdir(parents=True, exist_ok=True)
                 command = [
-                    sys.executable, "-m", "model.evaluate", *cell["arguments"],
-                    "--seed", str(seed), "--output", str(output), "--condition", condition, "--method", method,
+                    sys.executable,
+                    "-m",
+                    "model.evaluate",
+                    *cell["arguments"],
+                    "--seed",
+                    str(seed),
+                    "--output",
+                    str(output),
+                    "--condition",
+                    condition,
+                    "--method",
+                    method,
                 ]
                 with output.with_suffix(".log").open("w") as log:
-                    status = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT).returncode
-                outcomes.write(json.dumps({"condition": condition, "method": method, "seed": seed,
-                                           "run": str(output), "exit_code": status}) + "\n")
+                    status = subprocess.run(
+                        command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT
+                    ).returncode
+                outcomes.write(
+                    json.dumps(
+                        {
+                            "condition": condition,
+                            "method": method,
+                            "seed": seed,
+                            "run": str(output),
+                            "exit_code": status,
+                        }
+                    )
+                    + "\n"
+                )
                 failed |= bool(status)
     return failed
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("matrix", type=Path)
     parser.add_argument("--output", type=Path, required=True)

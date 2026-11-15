@@ -4,15 +4,15 @@
 
 ## Scenario schema
 
-| Field | Contract |
-| --- | --- |
-| `schema_version`, `id`, `provenance` | Version 1, a stable scenario name, and the source or derivation. |
-| `controllers` | Ordered entries with `id`, `host`, `openflow_port`, `http_port`, `support_switch`, and a binary `initial_action`. Optional `listen_host` overrides the controller's local bind address. |
-| `switches` | ID, integer datapath ID, and nominal controller ID. The Mininet launcher gives every switch access to all configured controllers for takeover. |
-| `hosts` | ID, IP address with prefix length, and unique MAC. Each host attaches to one switch. |
-| `links` | `source`, `target`, `source_port`, `target_port`, and `capacity_bps`. Use positive switch ports and port 0 for a single Mininet host interface. Optional `partition_weight` controls the partitioner. |
-| `telemetry` | `poll_seconds`, `peer_poll_seconds`, and `peer_timeout_seconds`. The decision step is configured separately in the run settings. |
-| `traffic` | Named lists of scheduled traffic jobs. Every job carries `id`, `kind`, `source`, `target`, `start_seconds`, and `rate_bps`. |
+| Field                                | Contract                                                                                                                                                                                              |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version`, `id`, `provenance` | Version 1, a stable scenario name, and the source or derivation.                                                                                                                                      |
+| `controllers`                        | Ordered entries with `id`, `host`, `openflow_port`, `http_port`, `support_switch`, and a binary `initial_action`. Optional `listen_host` overrides the controller's local bind address.               |
+| `switches`                           | ID, integer datapath ID, and nominal controller ID. The Mininet launcher gives every switch access to all configured controllers for takeover.                                                        |
+| `hosts`                              | ID, IP address with prefix length, and unique MAC. Each host attaches to one switch.                                                                                                                  |
+| `links`                              | `source`, `target`, `source_port`, `target_port`, and `capacity_bps`. Use positive switch ports and port 0 for a single Mininet host interface. Optional `partition_weight` controls the partitioner. |
+| `telemetry`                          | `poll_seconds`, `peer_poll_seconds`, and `peer_timeout_seconds`. The decision step is configured separately in the run settings.                                                                      |
+| `traffic`                            | Named lists of scheduled traffic jobs. Every job carries `id`, `kind`, `source`, `target`, `start_seconds`, and `rate_bps`.                                                                           |
 
 A synthetic `tcp` job adds `size_bytes` and can set `timeout_seconds`. A `pcap` job adds a `path` relative to the scenario JSON and the prepared file's `sha256`. Record the original capture ID and hash, time offsets of the cut segment, and address rewrite in that job's provenance. Prepare one-way TCP segments and rewrite Ethernet addresses to the configured hosts. Replay data should use one connection per four-tuple and avoid sequence space reuse inside a job.
 
@@ -143,15 +143,15 @@ Each settings profile can specify a resource mode (`forwarding`, `interfaces`, o
 
 ## Published protocol
 
-| Study evidence | Existing inputs and remaining work |
-| --- | --- |
-| V0 and source run (Table III, Figs. 5–6) | The checked-in graph matches the reported 13-switch, 16-link counts. The preparation tool accepts the local Digital Corpora capture. Confirm original assignments, initial conditions, trace windows, host mappings, five training profiles, and baseline settings. |
-| Target topologies V1–V4 (Figs. 4a, 7, 9) | Supply the authors' V1–V3 generators or topology assets, seeds and controller assignments. Bundled GtsCe supports graph partitioning. Its runnable V4 scenario still needs the study's hosts, capacity and controller mapping. |
-| Target traffic T1–T4 (Figs. 4b, 8) | The [Megalodon T2 example](#run-megalodon-for-t2) can run with a frozen source checkpoint. Recover the exact Corpora and Megalodon segments and replay settings for the published comparisons. Keep target captures out of source calibration and training. |
-| Comparison methods | Supply the published static configuration and adapters or measured data for DeepConf, SmartFCT, Mystique, CollaQ and CATE. Use the same condition name, windows and seeds for matched comparisons. |
-| Learning and power | Recover the estimator data and stopping schedule, normalization bounds, power coefficients, carbon intensity inputs and any original checkpoints. Mark any reconstructed settings in run provenance. |
-| Failures and latency (Figs. 10, 12) | Use explicit link and controller events and the selected physical resource mode. Supply the original failure schedule. The published latency runs use 25 repetitions. |
-| Embedding and pruning sensitivity (Figs. 13–14) | Record each order, sample-point count and pruning mode in a separate settings profile. Train a checkpoint of matching width. Use the same traffic and seed schedule across settings. |
-| NSFNET / FABRIC (Fig. 11) | Supply the testbed mapping, replay and capture data, and reachable controller endpoints. The evaluator accepts external traffic and flow records with a frozen checkpoint. |
+| Study evidence                                  | Existing inputs and remaining work                                                                                                                                                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V0 and source run (Table III, Figs. 5–6)        | The checked-in graph matches the reported 13-switch, 16-link counts. The preparation tool accepts the local Digital Corpora capture. Confirm original assignments, initial conditions, trace windows, host mappings, five training profiles, and baseline settings. |
+| Target topologies V1–V4 (Figs. 4a, 7, 9)        | Supply the authors' V1–V3 generators or topology assets, seeds and controller assignments. Bundled GtsCe supports graph partitioning. Its runnable V4 scenario still needs the study's hosts, capacity and controller mapping.                                      |
+| Target traffic T1–T4 (Figs. 4b, 8)              | The [Megalodon T2 example](#run-megalodon-for-t2) can run with a frozen source checkpoint. Recover the exact Corpora and Megalodon segments and replay settings for the published comparisons. Keep target captures out of source calibration and training.         |
+| Comparison methods                              | Supply the published static configuration and adapters or measured data for DeepConf, SmartFCT, Mystique, CollaQ and CATE. Use the same condition name, windows and seeds for matched comparisons.                                                                  |
+| Learning and power                              | Recover the estimator data and stopping schedule, normalization bounds, power coefficients, carbon intensity inputs and any original checkpoints. Mark any reconstructed settings in run provenance.                                                                |
+| Failures and latency (Figs. 10, 12)             | Use explicit link and controller events and the selected physical resource mode. Supply the original failure schedule. The published latency runs use 25 repetitions.                                                                                               |
+| Embedding and pruning sensitivity (Figs. 13–14) | Record each order, sample-point count and pruning mode in a separate settings profile. Train a checkpoint of matching width. Use the same traffic and seed schedule across settings.                                                                                |
+| NSFNET / FABRIC (Fig. 11)                       | Supply the testbed mapping, replay and capture data, and reachable controller endpoints. The evaluator accepts external traffic and flow records with a frozen checkpoint.                                                                                          |
 
 Main comparisons use 10 runs per condition and method. Keep raw artifacts and label replication results by the provenance of their inputs.

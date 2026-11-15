@@ -1,13 +1,25 @@
 """Partition weighted, undirected switch graphs subject to controller capacity."""
 
+from __future__ import annotations
+
 import math
 import random
 from collections import defaultdict
+from collections.abc import Iterator
 
 import networkx as nx
 
 
-def balanced_partitions(graph, *, capacity, difference, rho, resolution, seed, weight="weight"):
+def balanced_partitions(
+    graph: nx.Graph,
+    *,
+    capacity: int,
+    difference: int,
+    rho: float,
+    resolution: float,
+    seed: int,
+    weight: str = "weight",
+) -> Iterator[list[set[str]]]:
     """Yield disjoint sets of original node IDs at each aggregation level.
 
     A move must leave the destination within capacity. Subtract rho from its
@@ -17,7 +29,9 @@ def balanced_partitions(graph, *, capacity, difference, rho, resolution, seed, w
     if graph.is_directed() or graph.is_multigraph():
         raise ValueError("Normalize to a simple undirected graph before partitioning")
     if capacity < 1 or difference < 0 or rho < 0 or resolution <= 0:
-        raise ValueError("Capacity and resolution must be positive, difference and rho nonnegative")
+        raise ValueError(
+            "Capacity and resolution must be positive, difference and rho nonnegative"
+        )
     if not math.isfinite(rho) or not math.isfinite(resolution):
         raise ValueError("rho and resolution must be finite")
     network = nx.Graph()
@@ -33,13 +47,23 @@ def balanced_partitions(graph, *, capacity, difference, rho, resolution, seed, w
         return
     while True:
         communities = _move_nodes(network, capacity, difference, rho, resolution, rng)
-        yield [set().union(*(network.nodes[node]["members"] for node in group)) for group in communities]
+        yield [
+            set().union(*(network.nodes[node]["members"] for node in group))
+            for group in communities
+        ]
         if len(communities) == len(network) or len(communities) < 2:
             return
         network = _contract(network, communities)
 
 
-def _move_nodes(graph, capacity, difference, rho, resolution, rng):
+def _move_nodes(
+    graph: nx.Graph,
+    capacity: int,
+    difference: int,
+    rho: float,
+    resolution: float,
+    rng: random.Random,
+) -> list[set[str | int]]:
     order = list(graph)
     rng.shuffle(order)
     names = {node: index for index, node in enumerate(graph)}
@@ -89,11 +113,14 @@ def _move_nodes(graph, capacity, difference, rho, resolution, rng):
             return [group for group in groups if group]
 
 
-def _contract(graph, groups):
+def _contract(graph: nx.Graph, groups: list[set[str | int]]) -> nx.Graph:
     parent = {node: index for index, group in enumerate(groups) for node in group}
     coarse = nx.Graph()
     for index, group in enumerate(groups):
-        coarse.add_node(index, members=set().union(*(graph.nodes[node]["members"] for node in group)))
+        coarse.add_node(
+            index,
+            members=set().union(*(graph.nodes[node]["members"] for node in group)),
+        )
     for source, target, edge in graph.edges(data=True):
         a, b = parent[source], parent[target]
         accumulated = coarse.get_edge_data(a, b, {}).get("weight", 0)

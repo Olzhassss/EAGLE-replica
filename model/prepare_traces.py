@@ -1,5 +1,7 @@
 """Extract one-way TCP traffic from an Ethernet PCAP or PCAP.GZ for Mininet."""
 
+from __future__ import annotations
+
 import argparse
 import gzip
 import hashlib
@@ -12,6 +14,7 @@ from contextlib import ExitStack
 from ipaddress import IPv4Address
 from math import isfinite
 from pathlib import Path
+from typing import Any
 
 from .settings import DEFAULT_SCENARIO, ROOT, load_scenario
 
@@ -24,21 +27,28 @@ PCAP_BYTE_ORDER = {
 }
 
 
-def _number(value, label, minimum=0):
+def _number(value: object, label: str, minimum: int = 0) -> int | float:
     if type(value) not in (int, float) or not isfinite(value) or value < minimum:
         raise ValueError("Invalid " + label)
     return value
 
 
-def _flow_key(flow):
+def _flow_key(flow: dict[str, Any]) -> tuple[bytes, bytes | None]:
     addresses = [IPv4Address(flow[key]).packed for key in ("source_ip", "target_ip")]
-    ports = [flow[key] for key in ("source_port", "target_port")]
+    port_fields = ("source_port", "target_port")
+    if not any(field in flow for field in port_fields):
+        return b"".join(addresses), None
+    if not all(field in flow for field in port_fields):
+        raise ValueError(
+            "Specify both TCP ports or omit both to select the address pair"
+        )
+    ports = [flow[field] for field in port_fields]
     if any(type(port) is not int or not 1 <= port <= 65535 for port in ports):
         raise ValueError("TCP ports must be integers in 1..65535")
     return b"".join(addresses), struct.pack("!HH", *ports)
 
 
-def _tcp_payload(frame, key):
+def _tcp_payload(frame: bytes, key: tuple[bytes, bytes | None]) -> int:
     """Return payload size for a matching untagged Ethernet IPv4 TCP direction."""
     if (
         len(frame) < 54
@@ -53,7 +63,7 @@ def _tcp_payload(frame, key):
     if (
         ip_header < 20
         or len(frame) < offset + 20
-        or frame[offset : offset + 4] != key[1]
+        or (key[1] is not None and frame[offset : offset + 4] != key[1])
     ):
         return 0
     ip_total = int.from_bytes(frame[16:18], "big")
@@ -66,7 +76,10 @@ def _tcp_payload(frame, key):
     return payload
 
 
-def _plan_jobs(recipe, scenario):
+def _plan_jobs(
+    recipe: dict[str, Any],
+    scenario: dict[str, Any],
+) -> list[tuple[str, dict[str, Any], bytes]]:
     if recipe.get("schema_version") != 1:
         raise ValueError("Expected recipe schema version 1")
     hosts = {
@@ -113,7 +126,12 @@ def _plan_jobs(recipe, scenario):
     return jobs
 
 
-def _extract(capture, key, jobs, directory):
+def _extract(
+    capture: Path,
+    key: tuple[bytes, bytes | None],
+    jobs: list[tuple[str, dict[str, Any], bytes]],
+    directory: Path,
+) -> list[dict[str, int]]:
     pending = iter(
         sorted(range(len(jobs)), key=lambda index: jobs[index][1]["first_frame"])
     )
@@ -137,17 +155,13 @@ def _extract(capture, key, jobs, directory):
         for number in range(1, last + 1):
             data = source.read(record.size)
             if len(data) != record.size:
-                raise ValueError(
-                    "Capture ended before requested frame {}".format(number)
-                )
+                raise ValueError(f"Capture ended before requested frame {number}")
             _, _, captured, original = record.unpack(data)
             if not 0 < captured <= min(original, 65535):
-                raise ValueError(
-                    "Invalid Ethernet frame length at frame {}".format(number)
-                )
+                raise ValueError(f"Invalid Ethernet frame length at frame {number}")
             frame = source.read(captured)
             if len(frame) != captured:
-                raise ValueError("Capture ends within frame {}".format(number))
+                raise ValueError(f"Capture ends within frame {number}")
             while next_job is not None and jobs[next_job][1]["first_frame"] == number:
                 job = jobs[next_job][1]
                 stream = files.enter_context(
@@ -162,9 +176,7 @@ def _extract(capture, key, jobs, directory):
                     _, job, macs = jobs[index]
                     if payload:
                         if captured != original:
-                            raise ValueError(
-                                "Selected frame {} is truncated".format(number)
-                            )
+                            raise ValueError(f"Selected frame {number} is truncated")
                         stream.write(data)
                         stream.write(macs + frame[12:])
                         counts[index]["frames"] += 1
@@ -176,12 +188,14 @@ def _extract(capture, key, jobs, directory):
     return counts
 
 
-def _sha256(path):
+def _sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def prepare(capture, scenario_path, recipe_path, output):
+def prepare(
+    capture: Path, scenario_path: Path, recipe_path: Path, output: Path
+) -> Path:
     """Write prepared PCAPs and a scenario with relocatable replay paths."""
     capture = capture.resolve()
     scenario = load_scenario(scenario_path)
@@ -252,7 +266,7 @@ def prepare(capture, scenario_path, recipe_path, output):
     return scenario_file
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path)
     parser.add_argument("--scenario", type=Path, default=DEFAULT_SCENARIO)

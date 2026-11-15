@@ -19,14 +19,14 @@ model/.venv/bin/python -m model.evaluate --mininet-socket "$MININET_SOCKET" \
 
 ## Entry points and files
 
-| Entry point | Use |
-| --- | --- |
-| `model.train` | Train per-agent actor, critic, and reward estimator models. Use `--workers local` for an in-process run or the default `process` for spawned workers. JSON settings can define pretraining, frozen-estimator, and simultaneous learning stages. |
-| `model.evaluate` | Replay a frozen checkpoint, run a fixed action vector, or call an external baseline. Use `--policy module:function` for a callable taking `(observation, snapshots)` and returning one integer binary action per logical slot. |
-| `model.sweep` | Repeat evaluation cells with common seeds and save the outcome of each subprocess. |
-| `model.prepare_traces` | Prepare Mininet replay PCAPs and their scenario from the Digital Corpora gzip or another Ethernet libpcap file. See the [trace workflow](../scenarios/README.md#run-the-digital-corpora-capture). |
-| `model.report` | Compute run-level metrics, matched-baseline comparisons and 90% intervals. Options produce plots and t-SNE coordinates from recorded embeddings. |
-| `partitioning` | Partition an offline graph and calculate controller locations. |
+| Entry point            | Use                                                                                                                                                                                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model.train`          | Train per-agent actor, critic, and reward estimator models. Use `--workers local` for an in-process run or the default `process` for spawned workers. JSON settings can define pretraining, frozen-estimator, and simultaneous learning stages. |
+| `model.evaluate`       | Replay a frozen checkpoint, run a fixed action vector, or call an external baseline. Use `--policy module:function` for a callable taking `(observation, snapshots)` and returning one integer binary action per logical slot.                  |
+| `model.sweep`          | Repeat evaluation cells with common seeds and save the outcome of each subprocess.                                                                                                                                                              |
+| `model.prepare_traces` | Prepare Mininet replay PCAPs and their scenario from the Digital Corpora gzip or another Ethernet libpcap file. See the [trace workflow](../scenarios/README.md#run-the-digital-corpora-capture).                                               |
+| `model.report`         | Compute run-level metrics, matched-baseline comparisons and 90% intervals. Options produce plots and t-SNE coordinates from recorded embeddings.                                                                                                |
+| `partitioning`         | Partition an offline graph and calculate controller locations.                                                                                                                                                                                  |
 
 `controller_client.py` owns HTTP readiness, acknowledgments, and retries. `joint_environment.py` owns trial reset, joint action timing, and coherent sample selection. `observations.py` and `reward.py` implement numerical preprocessing and reward calculation. The actor-critic, optimizer and consensus code live in `actor_critic.py`, `learner.py`, `consensus.py`, and `workers.py`.
 

@@ -1,16 +1,18 @@
 """Load attributed switch graphs and export controller-assigned scenarios."""
 
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import networkx as nx
-
 
 TOPOLOGY_ZOO = Path(__file__).with_name("topology-zoo")
 
 
-def load_switch_graph(path):
+def load_switch_graph(path: str | Path) -> nx.Graph:
     """Keep switch identities and collapse directed/parallel input links.
 
     The largest connected component is used for GraphML benchmarks. Scenario
@@ -20,8 +22,11 @@ def load_switch_graph(path):
     if path.suffix.lower() == ".graphml":
         source = nx.read_graphml(path)
         simple = nx.Graph()
-        simple.add_nodes_from(node for node, data in source.nodes(data=True)
-                              if data.get("kind") != "host" and str(data.get("isHost")).lower() != "true")
+        simple.add_nodes_from(
+            node
+            for node, data in source.nodes(data=True)
+            if data.get("kind") != "host" and str(data.get("isHost")).lower() != "true"
+        )
         for a, b, attrs in source.edges(data=True):
             if a in simple and b in simple:
                 value = float(attrs.get("weight", 1))
@@ -48,7 +53,11 @@ def load_switch_graph(path):
     return graph
 
 
-def export_scenario(template, assignments, output):
+def export_scenario(
+    template: str | Path,
+    assignments: list[dict[str, Any]],
+    output: str | Path,
+) -> None:
     """Assign one existing controller and its supporting switch to each community."""
     template = Path(template).resolve()
     output = Path(output).resolve()
@@ -64,7 +73,9 @@ def export_scenario(template, assignments, output):
     for group in assignments:
         matches = slots.keys() & set(group["switches"])
         if len(matches) != 1:
-            raise ValueError("Each community must contain exactly one template supporting switch")
+            raise ValueError(
+                "Each community must contain exactly one template supporting switch"
+            )
         controller = slots[next(iter(matches))]
         controller["placement_switch"] = group["placement_switch"]
         for node in group["switches"]:
@@ -74,7 +85,9 @@ def export_scenario(template, assignments, output):
     for profile in scenario.get("traffic", {}).values():
         for job in profile:
             if job["kind"] == "pcap":
-                job["path"] = os.path.relpath(template.parent / job["path"], output.parent)
+                job["path"] = os.path.relpath(
+                    template.parent / job["path"], output.parent
+                )
     scenario["id"] += "-partitioned"
-    scenario["provenance"] = "Controller assignment generated from {}".format(template.name)
+    scenario["provenance"] = f"Controller assignment generated from {template.name}"
     output.write_text(json.dumps(scenario, indent=2) + "\n")

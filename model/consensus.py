@@ -1,12 +1,16 @@
 """Parameter mixing and packed L1-pruned consensus messages for trusted workers."""
 
+from __future__ import annotations
+
 import pickle
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 import numpy as np
 import torch
 
 
-def pruning_fraction(config, round_number):
+def pruning_fraction(config: Mapping[str, Any], round_number: int) -> float:
     mode = config["mode"]
     if mode == "dense":
         return 0.0
@@ -19,7 +23,12 @@ def pruning_fraction(config, round_number):
     return 0.3 + 0.4 * progress
 
 
-def pack_contribution(round_number, networks, mu, fraction):
+def pack_contribution(
+    round_number: int,
+    networks: Mapping[str, torch.nn.Module],
+    mu: float | None,
+    fraction: float,
+) -> bytes:
     """Pack copied float32 weights and masks. Keep each first layer and all biases."""
     packed = {}
     for component, model in networks.items():
@@ -40,29 +49,47 @@ def pack_contribution(round_number, networks, mu, fraction):
     return pickle.dumps((round_number, packed, mu), protocol=5)
 
 
-def _unpack_tensor(shape, mask, payload):
+def _unpack_tensor(
+    shape: tuple[int, ...],
+    mask: bytes | None,
+    payload: bytes,
+) -> torch.Tensor:
     values = np.frombuffer(payload, dtype=np.float32)
     if mask is None:
         return torch.from_numpy(values.copy().reshape(shape))
     size = int(np.prod(shape))
-    retained = np.unpackbits(np.frombuffer(mask, dtype=np.uint8), count=size).astype(bool)
+    retained = np.unpackbits(np.frombuffer(mask, dtype=np.uint8), count=size).astype(
+        bool
+    )
     dense = np.zeros(size, dtype=np.float32)
     dense[retained] = values
     return torch.from_numpy(dense.reshape(shape))
 
 
 @torch.no_grad()
-def mix_contributions(round_number, networks, mu, local_weight, peer_packets):
+def mix_contributions(
+    round_number: int,
+    networks: Mapping[str, torch.nn.Module],
+    mu: float | None,
+    local_weight: float,
+    peer_packets: Iterable[tuple[float, bytes]],
+) -> float | None:
     """Mix unpruned local tensors with reconstructed peer contributions by name."""
     mixed = {
-        component: {name: tensor.detach().clone().mul_(local_weight)
-                    for name, tensor in model.state_dict().items()}
+        component: {
+            name: tensor.detach().clone().mul_(local_weight)
+            for name, tensor in model.state_dict().items()
+        }
         for component, model in networks.items()
     }
     new_mu = mu * local_weight if mu is not None else None
     for weight, packet in peer_packets:
         message_round, components, peer_mu = pickle.loads(packet)
-        if message_round != round_number or components.keys() != mixed.keys() or (peer_mu is None) != (mu is None):
+        if (
+            message_round != round_number
+            or components.keys() != mixed.keys()
+            or (peer_mu is None) != (mu is None)
+        ):
             raise ValueError("Invalid consensus round or component set")
         if peer_mu is not None:
             new_mu += weight * peer_mu
