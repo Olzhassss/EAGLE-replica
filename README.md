@@ -1,12 +1,12 @@
 # EAGLE replica
 
-This repository implements the Mininet control loop and multi-agent training protocol from Monaco et al., *Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning With EAGLE* (IEEE TNSM 2026, DOI `10.1109/TNSM.2026.3717361`).
+This repository implements the Mininet control loop and multi-agent training protocol from Monaco et al., _Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning With EAGLE_ (IEEE TNSM 2026, DOI `10.1109/TNSM.2026.3717361`).
 
-| Project | Runtime | Guide |
-| --- | --- | --- |
-| Mininet emulation and traffic | System Python 3 with Mininet and Open vSwitch | [Mininet guide](mininet_nets/README.md) |
-| Ryu OpenFlow controllers | Python 3.7 in `ryu_controller/.venv/` | [Ryu guide](ryu_controller/README.md) |
-| EAGLE learning and experiment tools | Modern Python in `model/.venv/` | [RL guide](model/README.md) |
+| Project                             | Runtime                                       | Guide                                   |
+| ----------------------------------- | --------------------------------------------- | --------------------------------------- |
+| Mininet emulation and traffic       | System Python 3 with Mininet and Open vSwitch | [Mininet guide](mininet_nets/README.md) |
+| Ryu OpenFlow controllers            | Python 3.7 in `ryu_controller/.venv/`         | [Ryu guide](ryu_controller/README.md)   |
+| EAGLE learning and experiment tools | Modern Python in `model/.venv/`               | [RL guide](model/README.md)             |
 
 ## Start an experiment
 
@@ -27,7 +27,7 @@ Run these commands from the repository root in separate terminals after setting 
 3. Run a fixed policy with the deterministic synthetic flow. Substitute the socket path printed in step 2.
 
    ```sh
-   model/.venv/bin/python -m model.evaluate --mininet-socket /tmp/eagle-mininet-EXAMPLE/control.sock \
+   model/.venv/bin/python -m model.evaluate --mininet-socket <socket-path> \
      --traffic synthetic --fixed 1,1,1 --episode-steps 8 --output runs/fixed-v0
    ```
 
@@ -45,4 +45,6 @@ model/.venv/bin/python -m model.prepare_traces 5gb-tcp-connection.pcap.gz --outp
 
 Start both launchers with `--scenario runs/corpora-v0/scenario.json`. Pass the same scenario to training or evaluation and select `--traffic pcap-train` or `--traffic pcap-eval`. See the [trace run commands and study inputs](scenarios/README.md#run-the-digital-corpora-capture).
 
-The current application uses PyTorch directly. The original DI-engine tree remains available for the planned compatibility comparison. The original experiment scripts and dependency files are available in the baseline Git revision `2577b26`.
+For the study's Megalodon T2 evaluation, prepare `MegalodonChallenge.7z` with the [Megalodon recipe](scenarios/README.md#run-megalodon-for-t2) and reuse the Digital Corpora-trained checkpoint.
+
+The current application uses PyTorch directly. The original DI-engine tree remains available for the planned compatibility comparison.

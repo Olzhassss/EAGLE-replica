@@ -52,9 +52,36 @@ model/.venv/bin/python -m model.evaluate --scenario runs/corpora-v0/scenario.jso
 
 Replay restarts each episode. Size the episode to cover the latest scheduled start and `provenance.estimated_replay_seconds`, with time for a final observation. The example uses roughly 32 seconds at four seconds per decision. Flow records in `events.jsonl` report offered and received payload bytes and the replay completion time. `--keep-captures` retains sender and receiver PCAPs. The IP and TCP headers stay as captured because routing and replay use the rewritten MAC addresses. Completion measures delivery of the selected payload window at the capture interface.
 
+## Run Megalodon for T2
+
+The archive contains two packet captures of the same load test taken at different servers. The example uses the content-server capture and selects TCP payload in the direction `192.168.1.1 → 172.28.190.238` across multiple connections. It maps the first 40,000 capture frames to a replay from `h1` to `h4` at 8 Mbps, applying the address filter before writing the replay. This window and rate are reconstructed inputs. [Megalodon Challenge source](https://blog.packet-foo.com/2015/07/the-megalodon-challenge/) · [Recipe](megalodon-example.json)
+
+After preparing `runs/corpora-v0`, run the following from the repository root. Extraction requires about 2 GB for the selected archive member. The `tcpdump` step converts the prefix from PCAPNG to Ethernet libpcap without filtering its frame numbering.
+
+```sh
+mkdir -p runs/megalodon-input
+7z e -oruns/megalodon-input MegalodonChallenge.7z 'Content Server.pcapng'
+tcpdump -n -r 'runs/megalodon-input/Content Server.pcapng' -c 40000 \
+  -w runs/megalodon-input/content-first-40000.pcap
+model/.venv/bin/python -m model.prepare_traces runs/megalodon-input/content-first-40000.pcap \
+  --scenario runs/corpora-v0/scenario.json --recipe scenarios/megalodon-example.json \
+  --output runs/megalodon-v0
+```
+
+Restart both launchers with `--scenario runs/megalodon-v0/scenario.json` and set `MININET_SOCKET` to the new socket. The generated scenario includes the Corpora profiles as well as `megalodon-t2`. Reuse the Corpora checkpoint and the observation and reward settings used for source evaluation. The command below uses the default compatibility profile.
+
+```sh
+model/.venv/bin/python -m model.evaluate --scenario runs/megalodon-v0/scenario.json \
+  --mininet-socket "$MININET_SOCKET" --traffic megalodon-t2 \
+  --checkpoint runs/pcap-train/checkpoint.pth --episode-steps 8 \
+  --keep-captures --output runs/eval-megalodon-t2
+```
+
+The paper uses Megalodon as unseen traffic for T2. Keep it out of source training and normalization. Use the same reconstructed window and rate for matched baseline runs.
+
 ### Configure study traffic
 
-Copy the example recipe and pass it with `--recipe` to prepare other windows and host pairs. Each job uses inclusive, 1-based frame numbers from the input capture, a host pair, a start offset in seconds, and a rate in bps. Set `flow` to the captured IPv4 TCP direction. Use separate jobs for different ordered host pairs to compose the offered load in a profile. Split large windows before their TCP sequence space repeats. The generated jobs record original and rewritten SHA-256 hashes, source frame ranges, payload counts, and estimated replay duration. Extra captures can be prepared in a second invocation by supplying the first generated scenario with `--scenario` and a recipe with new profile names.
+Copy an example recipe and pass it with `--recipe` to prepare other windows and host pairs. Each job uses inclusive, 1-based frame numbers from the input capture, a host pair, a start offset in seconds, and a rate in bps. Set `flow` to the captured IPv4 TCP direction. Specify both ports to select one connection tuple, or omit both to select all TCP payload between the two addresses in that direction. Use separate jobs for different ordered host pairs to compose the offered load in a profile. Split large windows before their TCP sequence space repeats. The generated jobs record input and rewritten SHA-256 hashes, source frame ranges, payload counts, and estimated replay duration. Extra captures can be prepared in a second invocation by supplying the first generated scenario with `--scenario` and a recipe with new profile names.
 
 For the published protocol, prepare T0 from Digital Corpora and map its five training conditions to the `learning.stages` in a completed copy of [study.json](study.json). Use TrEnv 1 for uncongested traffic, TrEnvs 2–4 for the individual subnet hotspots, and TrEnv 5 for concurrent congestion in all three subnets. Fit normalization on source-only calibration runs, then train with `--settings` pointing to that completed profile and `--normalize-from` pointing to the calibration events. Reuse the source checkpoint with `model.evaluate` for the held-out scenarios. Supply the lower-utilization Corpora window for T1, Megalodon for T2, and higher-utilization Corpora windows for T3 and T4. Run the comparisons with matched traffic, fixed-action baselines and ten repetitions per condition.
 
@@ -120,7 +147,7 @@ Each settings profile can specify a resource mode (`forwarding`, `interfaces`, o
 | --- | --- |
 | V0 and source run (Table III, Figs. 5–6) | The checked-in graph matches the reported 13-switch, 16-link counts. The preparation tool accepts the local Digital Corpora capture. Confirm original assignments, initial conditions, trace windows, host mappings, five training profiles, and baseline settings. |
 | Target topologies V1–V4 (Figs. 4a, 7, 9) | Supply the authors' V1–V3 generators or topology assets, seeds and controller assignments. Bundled GtsCe supports graph partitioning. Its runnable V4 scenario still needs the study's hosts, capacity and controller mapping. |
-| Target traffic T1–T4 (Figs. 4b, 8) | Supply the exact Corpora and Megalodon segments and replay settings. Keep target captures out of source calibration and training. |
+| Target traffic T1–T4 (Figs. 4b, 8) | The [Megalodon T2 example](#run-megalodon-for-t2) can run with a frozen source checkpoint. Recover the exact Corpora and Megalodon segments and replay settings for the published comparisons. Keep target captures out of source calibration and training. |
 | Comparison methods | Supply the published static configuration and adapters or measured data for DeepConf, SmartFCT, Mystique, CollaQ and CATE. Use the same condition name, windows and seeds for matched comparisons. |
 | Learning and power | Recover the estimator data and stopping schedule, normalization bounds, power coefficients, carbon intensity inputs and any original checkpoints. Mark any reconstructed settings in run provenance. |
 | Failures and latency (Figs. 10, 12) | Use explicit link and controller events and the selected physical resource mode. Supply the original failure schedule. The published latency runs use 25 repetitions. |
