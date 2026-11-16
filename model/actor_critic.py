@@ -1,7 +1,5 @@
 """EAGLE's per-agent actor, critic, and reward estimator networks."""
 
-from __future__ import annotations
-
 import torch
 from numpy.typing import NDArray
 from torch import nn

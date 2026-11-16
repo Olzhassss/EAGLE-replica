@@ -1,8 +1,5 @@
 """Read native EAGLE checkpoints or convert legacy slot-indexed model states."""
 
-from __future__ import annotations
-
-import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -18,19 +15,21 @@ def load_checkpoint(path: Path) -> dict[str, Any]:
     """Load tensor and primitive state on CPU."""
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(checkpoint, dict):
-        raise ValueError("Checkpoint must contain a state dictionary")
+        raise TypeError("Checkpoint must contain a state dictionary")
     return checkpoint
 
 
 def save_checkpoint(path: Path, data: dict[str, Any]) -> None:
     """Write the complete episode-boundary state before replacing the destination."""
     with tempfile.NamedTemporaryFile(
-        dir=path.parent, prefix=".checkpoint-", delete=False
+        dir=path.parent,
+        prefix=".checkpoint-",
+        delete=False,
     ) as stream:
         temp = Path(stream.name)
     try:
         torch.save(data, temp)
-        os.replace(temp, path)
+        temp.replace(path)
     finally:
         temp.unlink(missing_ok=True)
 
@@ -53,7 +52,7 @@ def load_inference_model(
                 raise ValueError("Checkpoint agent order differs from the scenario")
             if saved_encoder.legacy != encoder.legacy:
                 raise ValueError(
-                    "Use the checkpoint's active/configured observation profile"
+                    "Use the checkpoint's active/configured observation profile",
                 )
             agent_states = checkpoint["agents"]
             if agent_states.keys() != set(slots):
@@ -65,14 +64,14 @@ def load_inference_model(
             return model.eval(), saved_encoder
         if require_native:
             raise ValueError(
-                "A legacy checkpoint needs explicit source normalization bounds"
+                "A legacy checkpoint needs explicit source normalization bounds",
             )
-        sources = {slot: checkpoint for slot in slots}
+        sources = dict.fromkeys(slots, checkpoint)
         _check_legacy_keys(_legacy_model_state(checkpoint), slots)
     else:
         if per_agent.keys() != set(slots):
             raise ValueError(
-                "Provide a legacy checkpoint path for each logical controller"
+                "Provide a legacy checkpoint path for each logical controller",
             )
         loaded = {file: load_checkpoint(file) for file in set(per_agent.values())}
         sources = {slot: loaded[file] for slot, file in per_agent.items()}
@@ -104,7 +103,7 @@ def _check_legacy_keys(state: dict[str, torch.Tensor], slots: tuple[str, ...]) -
     for key in state:
         parts = key.split(".")
         if (
-            len(parts) != 4
+            len(parts) != 4  # noqa: PLR2004
             or parts[0] not in ("actor", "critic")
             or parts[1] not in indices
         ):

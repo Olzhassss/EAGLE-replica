@@ -1,7 +1,5 @@
 """Derive completion times from managed TCP transfers or paired packet captures."""
 
-from __future__ import annotations
-
 import json
 from bisect import bisect_left
 from collections.abc import Iterator
@@ -29,7 +27,7 @@ class ByteRanges:
         self.ranges[index:finish] = [(start, end)]
         self.size += end - start
 
-    def add_intersection(self, start: int, end: int, expected: ByteRanges) -> None:
+    def add_intersection(self, start: int, end: int, expected: "ByteRanges") -> None:
         index = max(0, bisect_left(expected.ranges, (start, end)) - 1)
         while index < len(expected.ranges):
             lo, hi = expected.ranges[index]

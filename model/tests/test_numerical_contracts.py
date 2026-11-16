@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-
 from model.actor_critic import ActorCritic
 from model.checkpoints import load_inference_model, save_checkpoint
 from model.consensus import mix_contributions, pack_contribution, pruning_fraction
@@ -55,10 +54,12 @@ class NumericalContracts(unittest.TestCase):
         self.assertEqual(mu, 4.0)
         torch.testing.assert_close(receiver[0].weight, sender[0].weight)
         torch.testing.assert_close(
-            receiver[1].weight, torch.tensor([[0.0, 0.0], [3.0, 4.0]])
+            receiver[1].weight,
+            torch.tensor([[0.0, 0.0], [3.0, 4.0]]),
         )
         torch.testing.assert_close(
-            sender[1].weight, torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+            sender[1].weight,
+            torch.tensor([[1.0, 2.0], [3.0, 4.0]]),
         )
         rates = {"mode": "dynamic", "warmup_rounds": 5, "ramp_rounds": 10}
         self.assertEqual(pruning_fraction(rates, 5), 0)

@@ -1,6 +1,5 @@
 """Extract one-way TCP traffic from an Ethernet PCAP or PCAP.GZ for Mininet."""
-
-from __future__ import annotations
+# ruff: noqa: PLR2004, TRY301
 
 import argparse
 import gzip
@@ -27,7 +26,7 @@ PCAP_BYTE_ORDER = {
 }
 
 
-def _number(value: object, label: str, minimum: int = 0) -> int | float:
+def _number(value: Any, label: str, minimum: int = 0) -> int | float:
     if type(value) not in (int, float) or not isfinite(value) or value < minimum:
         raise ValueError("Invalid " + label)
     return value
@@ -40,7 +39,7 @@ def _flow_key(flow: dict[str, Any]) -> tuple[bytes, bytes | None]:
         return b"".join(addresses), None
     if not all(field in flow for field in port_fields):
         raise ValueError(
-            "Specify both TCP ports or omit both to select the address pair"
+            "Specify both TCP ports or omit both to select the address pair",
         )
     ports = [flow[field] for field in port_fields]
     if any(type(port) is not int or not 1 <= port <= 65535 for port in ports):
@@ -106,7 +105,7 @@ def _plan_jobs(
                 or (source, target) in pairs
             ):
                 raise ValueError(
-                    "Use distinct scenario hosts and one job per ordered host pair per profile"
+                    "Use distinct scenario hosts and one job per ordered host pair per profile",
                 )
             pairs.add((source, target))
             first, last = entry["first_frame"], entry["last_frame"]
@@ -116,7 +115,7 @@ def _plan_jobs(
                 or not 1 <= first <= last
             ):
                 raise ValueError(
-                    "Expected an inclusive, 1-based frame range for " + name
+                    "Expected an inclusive, 1-based frame range for " + name,
                 )
             _number(entry["start_seconds"], "start_seconds")
             _number(entry["rate_bps"], "rate_bps", minimum=1)
@@ -133,11 +132,11 @@ def _extract(
     directory: Path,
 ) -> list[dict[str, int]]:
     pending = iter(
-        sorted(range(len(jobs)), key=lambda index: jobs[index][1]["first_frame"])
+        sorted(range(len(jobs)), key=lambda index: jobs[index][1]["first_frame"]),
     )
     next_job = next(pending, None)
     active = {}
-    counts = [dict(frames=0, frame_bytes=0, payload_bytes=0) for _ in jobs]
+    counts = [{"frames": 0, "frame_bytes": 0, "payload_bytes": 0} for _ in jobs]
     last = max(job["last_frame"] for _, job, _ in jobs)
     opener = gzip.open if capture.suffix.lower() == ".gz" else Path.open
     with opener(capture, "rb") as source, ExitStack() as files:
@@ -149,7 +148,7 @@ def _extract(
             or struct.unpack_from(endian + "I", header, 20)[0] != 1
         ):
             raise ValueError(
-                "Expected an Ethernet libpcap capture, optionally gzip-compressed"
+                "Expected an Ethernet libpcap capture, optionally gzip-compressed",
             )
         record = struct.Struct(endian + "IIII")
         for number in range(1, last + 1):
@@ -165,7 +164,7 @@ def _extract(
             while next_job is not None and jobs[next_job][1]["first_frame"] == number:
                 job = jobs[next_job][1]
                 stream = files.enter_context(
-                    (directory / (job["id"] + ".pcap")).open("xb")
+                    (directory / (job["id"] + ".pcap")).open("xb"),
                 )
                 stream.write(header)
                 active[next_job] = stream
@@ -194,7 +193,10 @@ def _sha256(path: Path) -> str:
 
 
 def prepare(
-    capture: Path, scenario_path: Path, recipe_path: Path, output: Path
+    capture: Path,
+    scenario_path: Path,
+    recipe_path: Path,
+    output: Path,
 ) -> Path:
     """Write prepared PCAPs and a scenario with relocatable replay paths."""
     capture = capture.resolve()
@@ -215,7 +217,8 @@ def prepare(
             for job in entries:
                 if job["kind"] == "pcap":
                     job["path"] = os.path.relpath(
-                        scenario.path.parent / job["path"], output
+                        scenario.path.parent / job["path"],
+                        output,
                     )
         for (profile, job, _), count in zip(jobs, counts, strict=True):
             name = job["id"]
@@ -225,7 +228,7 @@ def prepare(
                 raise ValueError(
                     "Split "
                     + name
-                    + " into shorter windows to avoid TCP sequence reuse"
+                    + " into shorter windows to avoid TCP sequence reuse",
                 )
             path = output / (name + ".pcap")
             duration = 8 * count["frame_bytes"] / job["rate_bps"]
@@ -254,7 +257,7 @@ def prepare(
                         **count,
                         "estimated_replay_seconds": round(duration, 3),
                     },
-                }
+                },
             )
         scenario_file.write_text(json.dumps(scenario.data, indent=2) + "\n")
     except BaseException:
@@ -266,7 +269,7 @@ def prepare(
     return scenario_file
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path)
     parser.add_argument("--scenario", type=Path, default=DEFAULT_SCENARIO)
@@ -291,4 +294,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

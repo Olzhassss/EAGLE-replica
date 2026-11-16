@@ -1,7 +1,5 @@
 """Reduce saved EAGLE trials to reproducible comparisons and optional plots."""
 
-from __future__ import annotations
-
 import argparse
 import json
 from collections import defaultdict
@@ -47,8 +45,9 @@ def summarize_run(directory: Path) -> dict[str, Any]:
     if len(completed_episodes) != manifest["expected_episodes"]:
         errors.append(
             "Expected {} completed episodes, got {}".format(
-                manifest["expected_episodes"], len(completed_episodes)
-            )
+                manifest["expected_episodes"],
+                len(completed_episodes),
+            ),
         )
     measured_seconds = sum(row["step_seconds"] for row in steps)
     available_power = bool(steps) and all(
@@ -105,7 +104,7 @@ def summarize_run(directory: Path) -> dict[str, Any]:
                 row["first_byte_seconds"]
                 for row in flows
                 if row.get("first_byte_seconds") is not None
-            ]
+            ],
         ),
         "matched_packets": matched_packets,
         "packet_delay_seconds": (
@@ -118,7 +117,7 @@ def summarize_run(directory: Path) -> dict[str, Any]:
             [
                 sum(part["total_delivered_bps"] for part in row["reward_components"])
                 for row in steps
-            ]
+            ],
         ),
         "power_watts": energy / measured_seconds
         if energy is not None and measured_seconds
@@ -142,7 +141,7 @@ def summarize_run(directory: Path) -> dict[str, Any]:
                 for row in steps
                 if row["physical"].get("interface_seconds") is not None
                 and row["physical"].get("changes")
-            ]
+            ],
         ),
         "interface_on_seconds": _mean(_interface_timings(steps, enabled=True)),
         "interface_off_seconds": _mean(_interface_timings(steps, enabled=False)),
@@ -229,7 +228,7 @@ def compare_runs(
         gains = [gain for gain, _ in pairs if gain is not None]
         if gains:
             maxima[condition if normalization == "condition" else "all"].append(
-                (condition, method, mean(gains))
+                (condition, method, mean(gains)),
             )
         deltas[condition, method] = pairs
 
@@ -267,7 +266,8 @@ def compare_runs(
         }
         pairs = deltas[condition, method]
         maximum = denominators.get(
-            condition if normalization == "condition" else "all", {}
+            condition if normalization == "condition" else "all",
+            {},
         )
         scale = maximum.get("largest_mean_fct_gain", 0)
         values["fct_gain"] = [gain for gain, _ in pairs if gain is not None]
@@ -286,7 +286,7 @@ def compare_runs(
                 "metrics": {
                     name: _interval(samples, rng) for name, samples in values.items()
                 },
-            }
+            },
         )
     return {
         "baseline": baseline,
@@ -327,14 +327,18 @@ def plot_comparisons(report: dict[str, Any], directory: Path) -> None:
         if not series:
             continue
         figure, axis = plt.subplots(
-            figsize=(max(7, len(series)), 4), layout="constrained"
+            figsize=(max(7, len(series)), 4),
+            layout="constrained",
         )
         axis.bar(range(len(series)), [stat["mean"] for _, stat in series])
         for position, (_, stat) in enumerate(series):
             if stat["ci90"] is not None:
                 axis.vlines(position, *stat["ci90"], color="black")
         axis.set_xticks(
-            range(len(series)), [name for name, _ in series], rotation=35, ha="right"
+            range(len(series)),
+            [name for name, _ in series],
+            rotation=35,
+            ha="right",
         )
         axis.set_ylabel(metric.replace("_", " "))
         figure.savefig(directory / (metric + ".png"))
@@ -344,14 +348,16 @@ def plot_comparisons(report: dict[str, Any], directory: Path) -> None:
     for run in report["runs"]:
         if not run["errors"] and run["episode_returns"]:
             learning_curves[run["condition"], run["method"]].append(
-                run["episode_returns"]
+                run["episode_returns"],
             )
     if learning_curves:
         figure, axis = plt.subplots(layout="constrained")
         for (condition, method), series in sorted(learning_curves.items()):
             points = [mean(point) for point in zip(*series)]
             axis.plot(
-                range(1, len(points) + 1), points, label=condition + " / " + method
+                range(1, len(points) + 1),
+                points,
+                label=condition + " / " + method,
             )
         axis.set(xlabel="Episode", ylabel="Cumulative reward")
         axis.legend()
@@ -370,7 +376,7 @@ def plot_embeddings(runs: list[dict[str, Any]], output: Path, seed: int) -> None
         for row in read_events(Path(run["directory"]) / "events.jsonl"):
             if row["event"] in ("reset", "transition"):
                 samples[len(row["raw_embedding"])].append(
-                    (run["condition"], row["raw_embedding"])
+                    (run["condition"], row["raw_embedding"]),
                 )
     for width, points in samples.items():
         if len(points) < 3:
@@ -388,7 +394,7 @@ def plot_embeddings(runs: list[dict[str, Any]], output: Path, seed: int) -> None
         ]
         target = output.with_name(output.stem + "-" + str(width))
         target.with_suffix(".json").write_text(
-            json.dumps({"seed": seed, "points": rows}, indent=2) + "\n"
+            json.dumps({"seed": seed, "points": rows}, indent=2) + "\n",
         )
         figure, axis = plt.subplots(layout="constrained")
         for name in sorted(set(labels)):
@@ -399,7 +405,7 @@ def plot_embeddings(runs: list[dict[str, Any]], output: Path, seed: int) -> None
         plt.close(figure)
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", type=Path, nargs="+")
     parser.add_argument("--baseline", default="static")
@@ -420,7 +426,10 @@ def main() -> None:
     try:
         runs = [summarize_run(path) for path in args.runs]
         report = compare_runs(
-            runs, args.baseline, args.bootstrap_seed, args.efficiency_normalization
+            runs,
+            args.baseline,
+            args.bootstrap_seed,
+            args.efficiency_normalization,
         )
         args.output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
         if args.plots:
@@ -432,4 +441,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

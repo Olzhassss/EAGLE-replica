@@ -1,0 +1,21 @@
+[project]
+name = "EAGLE-replica"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "Olzhas T", email = "52438129+Olzhassss@users.noreply.github.com" }]
+dependencies = [
+  "gymnasium>=0.29,<2",
+  "matplotlib>=3.8,<4",
+  "networkx>=3.2,<4",
+  "numpy>=1.26,<3",
+  "scapy>=2.5,<3",
+  "scikit-learn>=1.3,<2",
+  "scipy>=1.11,<2",
+  "torch>=2.2,<3",
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["CPY001", "D101", "D107", "TRY003", "EM101", "ANN002", "ANN003", "EM102", "D102", "S301", "D105", "ANN401"]

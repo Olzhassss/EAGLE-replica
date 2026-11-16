@@ -1,6 +1,5 @@
 """Run frozen checkpoint, fixed-action, or external policy trials."""
-
-from __future__ import annotations
+# ruff: noqa: E731
 
 import argparse
 import hashlib
@@ -81,7 +80,7 @@ def evaluate(
             raise ValueError("Use --policy MODULE:FUNCTION")
         external = getattr(import_module(module), function)
         encoder = make_encoder(scenario, settings, calibration)
-        decide = lambda obs, snapshots: external(obs, snapshots)
+        decide = external
         method = args.method or args.policy
 
     checkpoints = (
@@ -137,7 +136,7 @@ def evaluate(
         )
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     add_trial_arguments(parser)
     modes = parser.add_mutually_exclusive_group(required=True)
@@ -175,4 +174,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

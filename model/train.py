@@ -1,6 +1,5 @@
 """Train EAGLE over a scenario curriculum and save resumable CPU checkpoints."""
-
-from __future__ import annotations
+# ruff: noqa: B023
 
 import argparse
 import time
@@ -21,7 +20,8 @@ from .workers import AgentPool
 
 
 def _batches(
-    rows: Iterable[dict[str, Any]], size: int
+    rows: Iterable[dict[str, Any]],
+    size: int,
 ) -> Iterator[list[dict[str, Any]]]:
     batch = []
     for row in rows:
@@ -64,7 +64,10 @@ def train(
     round_number = resume["round"] if resume else 0
     episode = 0
     with AgentPool(
-        encoder, settings["learning"], args.seed, distributed=args.workers == "process"
+        encoder,
+        settings["learning"],
+        args.seed,
+        distributed=args.workers == "process",
     ) as agents:
         if resume:
             agents.load_state_dict(resume["agents"])
@@ -129,7 +132,7 @@ def train(
                     else:
                         raise ValueError(
                             "Replay has no remaining transitions for "
-                            + stage["traffic"]
+                            + stage["traffic"],
                         )
                     log.write("trial_end", episode=episode, offline=True)
                 else:
@@ -162,7 +165,8 @@ def train(
                 )
                 print(
                     "Saved checkpoint for episode {} ({})".format(
-                        episode, stage["name"]
+                        episode,
+                        stage["name"],
                     ),
                     flush=True,
                 )
@@ -184,14 +188,14 @@ def _offline_rows(
         elif row["event"] == "transition" and current == traffic:
             if previous is None:
                 raise ValueError(
-                    "Replay transition is missing its preceding observation"
+                    "Replay transition is missing its preceding observation",
                 )
             observation = encoder.normalize(row["raw_embedding"]).tolist()
             yield dict(row, state=previous, next_state=observation)
             previous = observation
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     add_trial_arguments(parser)
     parser.add_argument("--workers", choices=("process", "local"), default="process")
@@ -211,7 +215,10 @@ def main() -> None:
     traffic_profiles = set(scenario.data.get("traffic", {})) | {"idle", "external"}
     try:
         stages = training_stages(
-            settings, args.episodes, args.traffic, traffic_profiles
+            settings,
+            args.episodes,
+            args.traffic,
+            traffic_profiles,
         )
         resume = load_checkpoint(args.resume) if args.resume else None
         if resume:
@@ -223,11 +230,11 @@ def main() -> None:
                 or resume["stages"] != stages
             ):
                 raise ValueError(
-                    "Resume requires the original scenario, settings, schedule, and seed"
+                    "Resume requires the original scenario, settings, schedule, and seed",
                 )
             if args.replay_from:
                 raise ValueError(
-                    "Offline replay resumes require a new explicit input window"
+                    "Offline replay resumes require a new explicit input window",
                 )
             encoder = ObservationEncoder.from_dict(resume["encoder"])
         else:
@@ -241,4 +248,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

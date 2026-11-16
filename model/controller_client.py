@@ -1,7 +1,5 @@
 """Versioned JSON client for physical controller endpoints and logical RL slots."""
 
-from __future__ import annotations
-
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +11,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 from .settings import Scenario
 
 
-class ControllerUnavailable(RuntimeError):
+class ControllerUnavailableError(RuntimeError):
     pass
 
 
@@ -47,7 +45,7 @@ class ControllerClient:
         url = self.endpoints[endpoint] + path + "?" + urlencode(query)
         headers = {"Content-Type": "application/json"} if action is not None else {}
         data = json.dumps([action]).encode() if action is not None else None
-        request = Request(
+        request = Request(  # noqa: S310
             url,
             data=data,
             headers=headers,
@@ -55,7 +53,8 @@ class ControllerClient:
         )
         # Scenario endpoints are explicit; do not send lab traffic through a proxy.
         with build_opener(ProxyHandler({})).open(
-            request, timeout=self.timeout
+            request,
+            timeout=self.timeout,
         ) as response:
             return json.load(response)
 
@@ -70,27 +69,31 @@ class ControllerClient:
         for endpoint in (slot, *(peer for peer in self.endpoints if peer != slot)):
             try:
                 payload = self._attempt(
-                    endpoint, path, dict(query, controller_id=slot), action
+                    endpoint,
+                    path,
+                    dict(query, controller_id=slot),
+                    action,
                 )
                 if payload["controller_id"] != slot:
                     raise ValueError("Mismatched controller ID in response")
-                return payload
+                return payload  # noqa: TRY300
             except HTTPError as error:
                 if error.code not in (502, 503, 504):
                     raise RuntimeError(
-                        f"Controller {endpoint} returned HTTP {error.code}"
+                        f"Controller {endpoint} returned HTTP {error.code}",
                     ) from error
                 failures.append(str(error))
             except (OSError, URLError) as error:
                 failures.append(str(error))
-        raise ControllerUnavailable("{}: {}".format(slot, " | ".join(failures)))
+        msg = "{}: {}".format(slot, " | ".join(failures))
+        raise ControllerUnavailableError(msg)
 
     def fetch_stats(self, slot: str, view: str) -> dict[str, Any]:
         """Return one timestamped snapshot or raise if the slot has no ready owner."""
         sample = self._call_slot(slot, "/network/stats", {"view": view})
         if sample["scenario"] != self.fingerprint or sample["schema_version"] != 1:
             raise ValueError(
-                f"Controller {slot} is running a different scenario or schema"
+                f"Controller {slot} is running a different scenario or schema",
             )
         if sample["sample_duration_seconds"] <= 0:
             raise ValueError(f"Controller {slot} reported an invalid poll window")
@@ -103,7 +106,7 @@ class ControllerClient:
     ) -> dict[str, dict[str, Any]]:
         """Send idempotent action requests and retain all successful acknowledgments."""
         acknowledged = {}
-        failures = {slot: "deadline elapsed" for slot in actions}
+        failures = dict.fromkeys(actions, "deadline elapsed")
         while failures and time.monotonic() < deadline:
             pending = tuple(failures)
             fatal = None
@@ -125,12 +128,12 @@ class ControllerClient:
                             ack["action"] != actions[slot]
                             or ack["scenario"] != self.fingerprint
                         ):
-                            raise ValueError(
-                                "Controller acknowledged a different action or scenario"
+                            raise ValueError(  # noqa: TRY301
+                                "Controller acknowledged a different action or scenario",
                             )
                         acknowledged[slot] = ack
                         del failures[slot]
-                    except ControllerUnavailable as error:
+                    except ControllerUnavailableError as error:
                         failures[slot] = str(error)
                     except (ValueError, KeyError, RuntimeError) as error:
                         failures[slot] = str(error)

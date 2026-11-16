@@ -1,7 +1,5 @@
 """Compute per-slot reward components from acknowledged controller snapshots."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable, Mapping
 from statistics import mean
 from typing import Any

@@ -4,8 +4,6 @@ Based on the graph-level FEATHER algorithm of Rozemberczki and Sarkar. The
 legacy calculation follows the checkout's Karate Club degree/loop conventions.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -118,7 +116,7 @@ class ObservationEncoder:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ObservationEncoder:
+    def from_dict(cls, data: dict[str, Any]) -> "ObservationEncoder":
         return cls(**dict(data, controller_ids=tuple(data["controller_ids"])))
 
 

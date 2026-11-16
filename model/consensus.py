@@ -1,7 +1,5 @@
 """Parameter mixing and packed L1-pruned consensus messages for trusted workers."""
 
-from __future__ import annotations
-
 import pickle
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -59,7 +57,7 @@ def _unpack_tensor(
         return torch.from_numpy(values.copy().reshape(shape))
     size = int(np.prod(shape))
     retained = np.unpackbits(np.frombuffer(mask, dtype=np.uint8), count=size).astype(
-        bool
+        bool,
     )
     dense = np.zeros(size, dtype=np.float32)
     dense[retained] = values

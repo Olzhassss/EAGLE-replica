@@ -63,8 +63,12 @@ def run_matrix(manifest: dict[str, Any], directory: Path) -> bool:
                     method,
                 ]
                 with output.with_suffix(".log").open("w") as log:
-                    status = subprocess.run(
-                        command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT
+                    status = subprocess.run(  # noqa: S603
+                        command,
+                        check=False,
+                        cwd=ROOT,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
                     ).returncode
                 outcomes.write(
                     json.dumps(
@@ -74,15 +78,15 @@ def run_matrix(manifest: dict[str, Any], directory: Path) -> bool:
                             "seed": seed,
                             "run": str(output),
                             "exit_code": status,
-                        }
+                        },
                     )
-                    + "\n"
+                    + "\n",
                 )
                 failed |= bool(status)
     return failed
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("matrix", type=Path)
     parser.add_argument("--output", type=Path, required=True)
@@ -95,4 +99,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

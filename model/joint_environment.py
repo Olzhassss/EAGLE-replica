@@ -1,7 +1,5 @@
 """Coordinate one action and one telemetry window for every logical agent."""
 
-from __future__ import annotations
-
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +9,11 @@ import numpy as np
 from gymnasium import spaces
 from numpy.typing import NDArray
 
-from .controller_client import ControllerClient, ControllerUnavailable, JointActionError
+from .controller_client import (
+    ControllerClient,
+    ControllerUnavailableError,
+    JointActionError,
+)
 from .emulation import Emulation
 from .observations import ObservationEncoder
 from .reward import compute_reward
@@ -73,7 +75,7 @@ class JointEnvironment:
                 ]
                 try:
                     rows = [job.result() for job in jobs]
-                except ControllerUnavailable as error:
+                except ControllerUnavailableError as error:
                     last = str(error)
                 else:
                     earliest = min(row["sampled_at"] for row in rows)
@@ -93,7 +95,7 @@ class JointEnvironment:
                         return rows
                     last = "waiting for post-action, synchronized telemetry"
                 time.sleep(0.15)
-        raise ControllerUnavailable(last)
+        raise ControllerUnavailableError(last)
 
     def _observe(self) -> tuple[dict[str, NDArray], list[float]]:
         topologies = [row["topology"] for row in self.snapshots]
@@ -178,7 +180,7 @@ class JointEnvironment:
         )
         try:
             self.snapshots = self._wait_for_samples(after, acknowledgments)
-        except ControllerUnavailable as error:
+        except ControllerUnavailableError as error:
             raise JointActionError(
                 acknowledgments, {"post-action telemetry": str(error)}
             ) from error

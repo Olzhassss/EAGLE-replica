@@ -1,7 +1,5 @@
 """Control an explicitly selected local emulator and controller supervisor."""
 
-from __future__ import annotations
-
 import json
 import socket
 from pathlib import Path
@@ -19,7 +17,8 @@ def unix_command(path: Path | str | None, operation: str, **arguments: Any) -> A
         with connection.makefile("rb") as stream:
             data = json.loads(stream.readline())
     if "error" in data:
-        raise RuntimeError("{} via {}: {}".format(operation, path, data["error"]))
+        msg = "{} via {}: {}".format(operation, path, data["error"])
+        raise RuntimeError(msg)
     return data["result"]
 
 
@@ -40,7 +39,7 @@ class Emulation:
         if not self.mininet_socket:
             if mode != "forwarding" or traffic not in ("idle", "external"):
                 raise ValueError(
-                    "Managed traffic and hardware changes require --mininet-socket"
+                    "Managed traffic and hardware changes require --mininet-socket",
                 )
             return
         status = unix_command(self.mininet_socket, "status")
@@ -49,7 +48,7 @@ class Emulation:
             or traffic not in status["traffic_profiles"]
         ):
             raise ValueError(
-                "Mininet scenario or traffic profile does not match the trial"
+                "Mininet scenario or traffic profile does not match the trial",
             )
         unix_command(self.mininet_socket, "reset", resource_mode=mode)
 
@@ -81,5 +80,7 @@ class Emulation:
             )
         operation = "start" if event["up"] else "stop"
         return unix_command(
-            self.ryu_socket, operation, controller_id=event["controller_id"]
+            self.ryu_socket,
+            operation,
+            controller_id=event["controller_id"],
         )

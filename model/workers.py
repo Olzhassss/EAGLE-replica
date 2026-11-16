@@ -1,14 +1,12 @@
 """Run learners locally or in one spawned process per logical controller."""
 
-from __future__ import annotations
-
 import math
 import multiprocessing
 import pickle
 import time
 import traceback
 from collections.abc import Sequence
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, suppress
 from multiprocessing.connection import Connection
 from types import TracebackType
 from typing import Any
@@ -45,7 +43,7 @@ def _serve(
                 return
             try:
                 reply = True, getattr(learner, operation)(*args)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 reply = False, traceback.format_exc()
             connection.send_bytes(_encode(reply))
 
@@ -95,7 +93,7 @@ class AgentPool(AbstractContextManager):
                     not pipe.poll(max(0, deadline - time.monotonic()))
                     or pipe.recv_bytes() != b"ready"
                 ):
-                    raise TimeoutError(f"Agent {slot} did not initialize")
+                    raise TimeoutError(f"Agent {slot} did not initialize")  # noqa: TRY301
         except BaseException:
             self.close(abort=True)
             raise
@@ -144,7 +142,7 @@ class AgentPool(AbstractContextManager):
 
     def decide(self, observation: dict[str, NDArray]) -> list[int]:
         row = observation["global_obs"].tolist()
-        result = self.dispatch("decide", {slot: (row,) for slot in self.slots})
+        result = self.dispatch("decide", dict.fromkeys(self.slots, (row,)))
         return [result[slot] for slot in self.slots]
 
     def run_round(
@@ -163,7 +161,7 @@ class AgentPool(AbstractContextManager):
                 or len(set(active_agents)) != len(active_agents)
             ):
                 raise ValueError(
-                    "Active learning agents must be distinct scenario slots"
+                    "Active learning agents must be distinct scenario slots",
                 )
             participants = tuple(slot for slot in self.slots if slot in active_agents)
         rows = self.settings.get("mixing_weights", {})
@@ -171,7 +169,7 @@ class AgentPool(AbstractContextManager):
             slot: _weights_for(slot, participants, rows.get(slot))
             for slot in participants
         }
-        metrics = self.dispatch("learn", {slot: (mode, batch) for slot in participants})
+        metrics = self.dispatch("learn", dict.fromkeys(participants, (mode, batch)))
         fraction = pruning_fraction(self.settings["pruning"], round_number)
         needed = {
             peer
@@ -206,7 +204,7 @@ class AgentPool(AbstractContextManager):
         }
 
     def state_dict(self) -> dict[str, Any]:
-        return self.dispatch("state_dict", {slot: () for slot in self.slots})
+        return self.dispatch("state_dict", dict.fromkeys(self.slots, ()))
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         if state.keys() != set(self.slots):
@@ -216,10 +214,8 @@ class AgentPool(AbstractContextManager):
     def close(self, *, abort: bool = False) -> None:
         for pipe, process in self.workers.values():
             if not abort and process.is_alive():
-                try:
+                with suppress(OSError):
                     pipe.send_bytes(_encode(("stop", ())))
-                except OSError:
-                    pass
             pipe.close()
         for _, process in self.workers.values():
             if not abort:

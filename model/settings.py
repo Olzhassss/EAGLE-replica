@@ -1,7 +1,5 @@
 """Read shared scenario data and resolve run settings for the RL project."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import math
@@ -37,10 +35,10 @@ def load_scenario(path: Path | str) -> Scenario:
     _require_version(data, path)
     scenario = Scenario(path, data, hashlib.sha256(raw).hexdigest())
     if not scenario.controller_ids or len(set(scenario.controller_ids)) != len(
-        scenario.controller_ids
+        scenario.controller_ids,
     ):
         raise ValueError(
-            "The scenario needs distinct controller IDs in model slot order"
+            "The scenario needs distinct controller IDs in model slot order",
         )
     return scenario
 
@@ -77,7 +75,9 @@ def load_settings(
     if reward["kind"] == "power":
         for key in ("alpha", "throughput_reference_bps", "power_reference_watts"):
             _positive_number(
-                reward.get(key), "reward." + key, allow_zero=key == "alpha"
+                reward.get(key),
+                "reward." + key,
+                allow_zero=key == "alpha",
             )
     elif reward["kind"] == "legacy":
         _positive_number(reward.get("throughput_scale"), "reward.throughput_scale")
@@ -102,7 +102,7 @@ def load_settings(
             "controller",
         ):
             raise ValueError(
-                "Failure needs a step in the trial and kind link or controller"
+                "Failure needs a step in the trial and kind link or controller",
             )
     return data
 
@@ -128,21 +128,28 @@ def training_stages(
     if pruning["mode"] == "dynamic":
         _positive_int(pruning.get("ramp_rounds"), "pruning.ramp_rounds")
         _positive_int(
-            pruning.get("warmup_rounds", 5), "pruning.warmup_rounds", allow_zero=True
+            pruning.get("warmup_rounds", 5),
+            "pruning.warmup_rounds",
+            allow_zero=True,
         )
     stages = learning.get("stages") or [
-        {"name": "training", "mode": "online", "traffic": traffic, "episodes": episodes}
+        {
+            "name": "training",
+            "mode": "online",
+            "traffic": traffic,
+            "episodes": episodes,
+        },
     ]
     if len({stage["name"] for stage in stages}) != len(stages):
         raise ValueError("Training stage names must be distinct")
     for stage in stages:
-        _positive_int(stage.get("episodes"), stage["name"] + ".episodes")
+        _positive_int(stage.get("episodes"), str(stage["name"]) + ".episodes")
         if stage.get("traffic") not in known_profiles:
             raise ValueError(
-                "Set a scenario traffic profile for stage " + stage["name"]
+                "Set a scenario traffic profile for stage " + str(stage["name"]),
             )
         if stage["mode"] not in ("pretrain", "frozen", "online"):
-            raise ValueError("Unknown estimator mode: " + stage["mode"])
+            raise ValueError("Unknown estimator mode: " + str(stage["mode"]))
     return stages
 
 
@@ -151,20 +158,21 @@ def _require_version(data: dict[str, Any], path: Path | str) -> None:
         raise ValueError(f"Expected schema_version 1 in {path}")
 
 
-def _positive_int(value: object, name: str, *, allow_zero: bool = False) -> None:
+def _positive_int(value: Any, name: str, *, allow_zero: bool = False) -> None:
     if type(value) is not int or value < (0 if allow_zero else 1):
-        raise ValueError(
-            "Set {} to an integer {}".format(name, ">= 0" if allow_zero else "> 0")
-        )
+        msg = "Set {} to an integer {}".format(name, ">= 0" if allow_zero else "> 0")
+        raise ValueError(msg)
 
 
-def _positive_number(value: object, name: str, *, allow_zero: bool = False) -> None:
+def _positive_number(value: Any, name: str, *, allow_zero: bool = False) -> None:
     if (
         type(value) not in (float, int)
         or not math.isfinite(value)
         or value < 0
         or (value == 0 and not allow_zero)
     ):
-        raise ValueError(
-            "Set {} to a finite number {}".format(name, ">= 0" if allow_zero else "> 0")
+        msg = "Set {} to a finite number {}".format(
+            name,
+            ">= 0" if allow_zero else "> 0",
         )
+        raise ValueError(msg)

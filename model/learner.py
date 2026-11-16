@@ -1,7 +1,5 @@
 """Local average-reward actor-critic updates and per-agent checkpoint state."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import torch

@@ -1,7 +1,5 @@
 """Persist experiment settings and event records before generating figures."""
 
-from __future__ import annotations
-
 import json
 import platform
 import shutil
@@ -37,7 +35,7 @@ class RunLog:
             },
         )
         (self.directory / "run.json").write_text(
-            json.dumps(manifest, indent=2, allow_nan=False) + "\n"
+            json.dumps(manifest, indent=2, allow_nan=False) + "\n",
         )
         self.events = self.directory / "events.jsonl"
         self.capture_cache = {}

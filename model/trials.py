@@ -1,7 +1,5 @@
 """Run single episodes and keep measurements for actions, rewards, and flows."""
 
-from __future__ import annotations
-
 import time
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
@@ -19,7 +17,8 @@ from .run_log import RunLog
 def run_trial(
     environment: JointEnvironment,
     policy: Callable[
-        [dict[str, NDArray], list[dict[str, Any]] | None], Sequence[int] | NDArray
+        [dict[str, NDArray], list[dict[str, Any]] | None],
+        Sequence[int] | NDArray,
     ],
     log: RunLog,
     *,
@@ -47,7 +46,7 @@ def run_trial(
             actions = policy(observation, environment.snapshots)
             inference = time.monotonic() - start
             next_observation, rewards, terminated, truncated, info = environment.step(
-                actions
+                actions,
             )
             transition = {
                 "state": observation["global_obs"].tolist(),
