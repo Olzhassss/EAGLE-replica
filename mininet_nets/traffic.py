@@ -49,7 +49,6 @@ class TrialTraffic:
                 list(map(str, command)),
                 stdout=output,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,
             )
         self.processes.append((process, log, capture))
         return process
