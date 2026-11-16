@@ -1,7 +1,7 @@
 """Feather graph fingerprints and checkpoint-compatible observation scaling.
 
-Based on the graph-level FEATHER algorithm of Rozemberczki and Sarkar. The
-legacy calculation follows the checkout's Karate Club degree/loop conventions.
+Based on the graph-level FEATHER algorithm of Rozemberczki and Sarkar.
+Uses the degree and self-loop conventions of Karate Club 1.3.3.
 """
 
 from collections.abc import Iterable
@@ -13,18 +13,13 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import diags
 
-from .settings import Scenario
-
-LEGACY_MINIMUM = [2705, 2706, 41, -1, 2751, 2751, 42, -1, 2705, 2706, 41, -1]
-LEGACY_MAXIMUM = [4969, 4970, 82, 1, 4542, 4543, 75, 1, 4918, 4919, 81, 1]
-
+from .scenario import Scenario
 
 def embed_subnet(
     topology: dict[str, Any],
     *,
     order: int,
     eval_points: int,
-    legacy: bool = False,
 ) -> NDArray:
     """Return a vector of 4 * order * eval_points graph features."""
     nodes = sorted(row["id"] for row in topology["nodes"])
@@ -33,28 +28,27 @@ def embed_subnet(
     graph = nx.Graph()
     graph.add_nodes_from(nodes)
     for row in topology["links"]:
-        graph.add_edge(
-            row["source"], row["target"], weight=float(row.get("weight", 1.0))
-        )
-    graph.add_weighted_edges_from((node, node, 1.0) for node in nodes)
+        attributes = {"weight": float(row["weight"])} if "weight" in row else {}
+        graph.add_edge(row["source"], row["target"], **attributes)
+    graph.add_edges_from((node, node) for node in nodes)
 
     adjacency = nx.to_scipy_sparse_array(
-        graph, nodelist=nodes, weight="weight", dtype=float
+        graph,
+        nodelist=nodes,
+        weight="weight",
+        dtype=float,
     )
-    if legacy:
-        degree = np.array([graph.degree(node) for node in nodes], dtype=float)
-        walk_degree = degree
-    else:
-        degree = np.array(
-            [graph.degree(node, weight="weight") for node in nodes], dtype=float
-        )
-        walk_degree = np.asarray(adjacency.sum(axis=1)).reshape(-1)
-    walk = diags(1.0 / walk_degree) @ adjacency
+    # Karate Club checks weightedness after inserting implicit unit self-loops.
+    # Those loops count twice in degree and once in the weighted adjacency.
+    degree_weight = "weight" if nx.is_weighted(graph) else None
+    degree = np.array([graph.degree(node, weight=degree_weight) for node in nodes])
+    walk = diags(1.0 / degree) @ adjacency
     features = np.column_stack(
-        (np.log1p(degree), [nx.clustering(graph, node) for node in nodes])
+        (np.log1p(degree), [nx.clustering(graph, node) for node in nodes]),
     )
     angles = (features[:, :, None] * np.linspace(0.01, 2.5, eval_points)).reshape(
-        len(nodes), -1
+        len(nodes),
+        -1,
     )
     features = np.concatenate((np.cos(angles), np.sin(angles)), axis=1)
     pooled = []
@@ -69,7 +63,6 @@ class ObservationEncoder:
     controller_ids: tuple[str, ...]
     order: int
     eval_points: int
-    legacy: bool
     minimum: list[float] | None = None
     maximum: list[float] | None = None
 
@@ -89,12 +82,11 @@ class ObservationEncoder:
         return 4 * self.order * self.eval_points * len(self.controller_ids)
 
     def embed_local(self, topology: dict[str, Any]) -> NDArray:
-        vector = embed_subnet(
-            topology, order=self.order, eval_points=self.eval_points, legacy=self.legacy
+        return embed_subnet(
+            topology,
+            order=self.order,
+            eval_points=self.eval_points,
         )
-        if self.legacy:
-            return np.array([round(value, 4) * 10000 for value in vector])
-        return vector
 
     def normalize(self, raw: ArrayLike) -> NDArray:
         """Scale the concatenated vector using bounds from the source checkpoint."""
@@ -103,12 +95,15 @@ class ObservationEncoder:
             raise ValueError("Expected one embedding per controller in slot order")
         if self.minimum is None:
             return np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0).astype(
-                np.float32
+                np.float32,
             )
         lo = np.asarray(self.minimum)
         widths = np.asarray(self.maximum) - lo
         scaled = np.divide(
-            (raw - lo) * 100, widths, out=np.zeros(self.size), where=widths > 0
+            (raw - lo) * 100,
+            widths,
+            out=np.zeros(self.size),
+            where=widths > 0,
         )
         return np.nan_to_num(scaled, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
 
@@ -126,22 +121,11 @@ def make_encoder(
     calibration: Iterable[ArrayLike] = (),
 ) -> ObservationEncoder:
     config = settings["embedding"]
-    legacy = settings["observation_view"] == "configured"
     encoder = ObservationEncoder(
-        scenario.controller_ids, config["order"], config["eval_points"], legacy
+        scenario.controller_ids,
+        config["order"],
+        config["eval_points"],
     )
-    if config["normalization"] == "legacy":
-        if (
-            scenario.controller_ids != ("c0", "c1", "c2")
-            or not legacy
-            or encoder.size != 12
-        ):
-            raise ValueError(
-                "Legacy min/max values require the original c0,c1,c2 observation contract"
-            )
-        return ObservationEncoder(
-            **dict(encoder.to_dict(), minimum=LEGACY_MINIMUM, maximum=LEGACY_MAXIMUM)
-        )
     if config["normalization"] == "source":
         bounds = None
         count = 0
@@ -157,13 +141,13 @@ def make_encoder(
             count += 1
         if count < 2:
             raise ValueError(
-                "Source normalization requires at least two saved source embeddings"
+                "Source normalization requires at least two saved source embeddings",
             )
         return ObservationEncoder(
             **dict(
                 encoder.to_dict(),
                 minimum=bounds[0].tolist(),
                 maximum=bounds[1].tolist(),
-            )
+            ),
         )
     return encoder

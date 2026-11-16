@@ -329,7 +329,7 @@ class EagleController(app_manager.RyuApp):
             "dispatched_at": time.time(),
         }
 
-    def stats(self, slot: str, view: str) -> Optional[Dict[str, Any]]:  # noqa: C901
+    def stats(self, slot: str) -> Optional[Dict[str, Any]]:  # noqa: C901
         if (
             self.topology.owners.get(slot) != self.controller_id
             or self.telemetry.latest is None
@@ -337,11 +337,7 @@ class EagleController(app_manager.RyuApp):
             return None
         sample = self.telemetry.latest
         duration = sample["sample_duration_seconds"]
-        # The checkout divided raw deltas by a Mi-based denominator with no elapsed-time term.
-        utilization_duration = (
-            duration if view == "active" else (1024 * 1024) / 1_000_000
-        )
-        graph = self.topology.observation_graph(slot, view)
+        graph = self.topology.observation_graph(slot)
         weights = {}
         switch_rates = {}
         active = self.topology.active
@@ -357,23 +353,19 @@ class EagleController(app_manager.RyuApp):
                 capacity = graph[node][neighbor]["capacity_bps"]
                 weights.setdefault(node, {})[neighbor] = max(
                     weights.get(node, {}).get(neighbor, 0),
-                    compute_link_utilization(tx, utilization_duration, capacity),
+                    compute_link_utilization(tx, duration, capacity),
                 )
                 weights.setdefault(neighbor, {})[node] = max(
                     weights.get(neighbor, {}).get(node, 0),
-                    compute_link_utilization(rx, utilization_duration, capacity),
+                    compute_link_utilization(rx, duration, capacity),
                 )
         delivered = {}
-        legacy = {}
         for node, flows in sorted(sample["flows"].items()):
             if self.scenario.switches[node]["controller"] != slot:
                 continue
             for (source, target), count in flows.items():
-                flow = source + " " + target
-                legacy.setdefault(flow, count)
                 if target in self.scenario.graph[node]:
-                    delivered[flow] = count
-                    legacy[flow] = count
+                    delivered[source + " " + target] = count
         active_switches, active_ports = self.topology.resource_usage(slot)
         links = []
         for source, target in graph.edges:
@@ -381,15 +373,7 @@ class EagleController(app_manager.RyuApp):
                 weights.get(source, {}).get(target, 0),
                 weights.get(target, {}).get(source, 0),
             )
-            # The legacy encoder saw unset weights on edges with no samples.
-            row = {"source": source, "target": target}
-            if (
-                view == "active"
-                or target in weights.get(source, {})
-                or source in weights.get(target, {})
-            ):
-                row["weight"] = weight
-            links.append(row)
+            links.append({"source": source, "target": target, "weight": weight})
         return {
             "schema_version": 1,
             "scenario": self.scenario.fingerprint,
@@ -400,9 +384,6 @@ class EagleController(app_manager.RyuApp):
             "sampled_at": sample["sampled_at"],
             "window_start": sample["window_start"],
             "sample_duration_seconds": duration,
-            "stats": {"data": weights},
-            "throughput": legacy if view == "configured" else delivered,
-            "demands": legacy,
             "delivered_bytes": delivered,
             "topology": {
                 "directed": False,
@@ -419,10 +400,7 @@ class EagleController(app_manager.RyuApp):
                 "active_switches": active_switches,
                 "active_ports": active_ports,
                 "switch_egress_bps": switch_rates,
-                "links": sorted(
-                    sorted(edge)
-                    for edge in self.topology.observation_graph(slot, "active").edges
-                ),
+                "links": sorted(sorted(edge) for edge in graph.edges),
             },
             "port_counters": {
                 node: counters
@@ -470,17 +448,12 @@ class EagleApi(ControllerBase):
     @route("eagle", "/network/stats", methods=["GET"])
     def get_stats(self, request: Request, **_) -> Response:
         slot = request.GET.get("controller_id", self.app.controller_id)
-        view = request.GET.get("view", "configured")
-        if slot not in self.app.scenario.controllers or view not in (
-            "configured",
-            "active",
-        ):
-            return _response(
-                {"error": "Unknown controller slot or observation view"},
-                400,
-            )
+        if slot not in self.app.scenario.controllers:
+            return _response({"error": "Unknown controller slot"}, 400)
+        if request.GET.get("view", "active") != "active":
+            return _response({"error": "Only active telemetry is supported"}, 400)
         with self.app.lock:
-            snapshot = self.app.stats(slot, view)
+            snapshot = self.app.stats(slot)
             if snapshot is None:
                 return _response(
                     {

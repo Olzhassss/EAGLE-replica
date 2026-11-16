@@ -13,7 +13,7 @@ Follow the [root startup sequence](README.md#start-an-experiment) to start a tri
 3. [Routing](ryu_controller/routing.py) chooses a single stable end-to-end path per ordered MAC pair. [OpenFlow adapters](ryu_controller/openflow_rules.py) reconcile only the changed EAGLE flow entries. Dispatch time and barrier time are distinct.
 4. [Telemetry](ryu_controller/telemetry.py) groups multipart replies by poll round, uses two complete rounds of the same topology generation for counter deltas, and exposes the sample window. Delivered bytes come from destination attachment switches. Observations use directional utilization mapped back to weighted subnet edges.
 5. The [joint environment](model/joint_environment.py) sends all slot actions, waits for their acknowledgments and the decision window, then reads snapshots that start after the action and contain the acknowledged revisions. It gathers fresh state per slot or fails the trial with the recorded error. For optional interface or OVS experiments it also coordinates physical actions through Mininet.
-6. The [encoder](model/observations.py) embeds each subnet and concatenates the embeddings in logical slot order. The [reward module](model/reward.py) calculates either the compatibility reward or the configured normalized throughput and modeled power objective. It records the components independently of evaluation metrics.
+6. The [encoder](model/observations.py) embeds each subnet and concatenates the embeddings in logical slot order. The [reward module](model/reward.py) calculates the normalized throughput and modeled power objective. It records the components independently of evaluation metrics.
 
 The [V0 scenario](scenarios/v0.json) has 13 switches, nine hosts, and three support paths. Slot c0 at HTTP 8080 manages s12, c1 at 8081 manages s11, and c2 at 8082 manages s13. The default launchers use this order for observations, actions, policy weights, and checkpoints.
 
@@ -23,7 +23,7 @@ The [training entrypoint](model/train.py) uses plain PyTorch to make the learnin
 
 The [learning update](model/learner.py) uses local reward in the critic target, the joint action and state in the estimator, and the estimated shared reward in the actor update. Curriculum stages choose whether to pretrain, freeze, or update the reward estimator concurrently. [Consensus](model/consensus.py) mixes the configured active peers' parameters and scalar mean reward, leaving actors local. Dense, static, and dynamic modes are available. Pruning packs the retained weights and a bit mask without mutating the tensor being sent. The first layer and biases remain dense.
 
-The [checkpoint loader](model/checkpoints.py) handles native saved training state and legacy `actor.N` and `critic.N` model keys. Native evaluation reuses the stored preprocessing and loads through standard PyTorch state dictionaries. Each target topology must use the same logical slot order and observation view as the source checkpoint.
+The [checkpoint loader](model/checkpoints.py) restores the saved encoder and agent networks. Evaluation reuses the stored preprocessing and loads through standard PyTorch state dictionaries. Each target topology must use the same logical slot order as the source checkpoint.
 
 ## Data and evaluation
 

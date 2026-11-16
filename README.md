@@ -27,11 +27,11 @@ Run these commands from the repository root in separate terminals after setting 
 3. Run a fixed policy with the deterministic synthetic flow.
 
    ```sh
-   model/.venv/bin/python -m model.evaluate --mininet-socket "$(cat mininet_nets/.socket)" \
+   model/.venv/bin/python -m model.evaluate \
      --traffic synthetic --fixed 1,1,1 --episode-steps 8 --output runs/fixed-v0
    ```
 
-   Use `model.train` for training and `model.evaluate --checkpoint PATH` for frozen evaluation. The RL runner starts and stops its traffic per trial. Use Ctrl-C in the Mininet and Ryu launcher terminals to stop their services.
+   Follow the [training and evaluation pipeline](pipeline.md) for calibration, training and frozen evaluation. The runner discovers both launcher sockets. The RL runner starts and stops its traffic per trial. Use Ctrl-C in the Mininet and Ryu launcher terminals to stop their services.
 
 [Documentation.md](Documentation.md) describes the project boundaries, control loop, and replication workflow. [Scenarios](scenarios/README.md) lists the shared data and the remaining research inputs. [Partitioning](partitioning/README.md) runs offline in the RL environment.
 

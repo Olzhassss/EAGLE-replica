@@ -1,17 +1,14 @@
 {
-  "schema_version": 1,
   "profile": "paper-method",
   "decision_seconds": 5,
   "episode_steps": null,
   "warmup_seconds": null,
-  "observation_view": "active",
   "embedding": {
     "order": 1,
     "eval_points": 1,
     "normalization": "source"
   },
   "reward": {
-    "kind": "power",
     "alpha": 0.5,
     "throughput_reference_bps": null,
     "power_reference_watts": null,
@@ -26,7 +23,6 @@
     "critic_lr": 0.001,
     "estimator_lr": 0.001,
     "batch_size": null,
-    "estimator_input": "current_state_binary_actions",
     "pruning": {
       "mode": "dynamic",
       "warmup_rounds": 5,
@@ -70,10 +66,5 @@
         "episodes": null
       }
     ]
-  },
-  "placement": {
-    "capacity": 6,
-    "difference": 2,
-    "rho": 0.01
   }
 }

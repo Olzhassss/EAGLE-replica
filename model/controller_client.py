@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
 
-from .settings import Scenario
+from .scenario import Scenario
 
 
 class ControllerUnavailableError(RuntimeError):
@@ -88,9 +88,9 @@ class ControllerClient:
         msg = "{}: {}".format(slot, " | ".join(failures))
         raise ControllerUnavailableError(msg)
 
-    def fetch_stats(self, slot: str, view: str) -> dict[str, Any]:
+    def fetch_stats(self, slot: str) -> dict[str, Any]:
         """Return one timestamped snapshot or raise if the slot has no ready owner."""
-        sample = self._call_slot(slot, "/network/stats", {"view": view})
+        sample = self._call_slot(slot, "/network/stats", {"view": "active"})
         if sample["scenario"] != self.fingerprint or sample["schema_version"] != 1:
             raise ValueError(
                 f"Controller {slot} is running a different scenario or schema",

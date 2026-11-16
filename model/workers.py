@@ -29,10 +29,11 @@ def _serve(
     encoder: ObservationEncoder,
     settings: dict[str, Any],
     seed: int,
+    device: torch.device,
 ) -> None:
     with connection:
         torch.set_num_threads(1)
-        learner = AgentLearner(slot, encoder, settings, seed)
+        learner = AgentLearner(slot, encoder, settings, seed, device=device)
         connection.send_bytes(b"ready")
         while True:
             try:
@@ -58,6 +59,7 @@ class AgentPool(AbstractContextManager):
         seed: int,
         *,
         distributed: bool,
+        device: torch.device | str = "cpu",
         timeout: float = 30,
     ) -> None:
         self.slots = encoder.controller_ids
@@ -67,6 +69,7 @@ class AgentPool(AbstractContextManager):
         self.local = {}
         self.workers = {}
         self.bytes_transferred = 0
+        device = torch.device(device)
         context = multiprocessing.get_context("spawn")
         try:
             for slot in self.slots:
@@ -75,7 +78,7 @@ class AgentPool(AbstractContextManager):
                     try:
                         process = context.Process(
                             target=_serve,
-                            args=(child, slot, encoder, settings, seed),
+                            args=(child, slot, encoder, settings, seed, device),
                             daemon=True,
                         )
                         process.start()
@@ -86,7 +89,9 @@ class AgentPool(AbstractContextManager):
                         child.close()
                     self.workers[slot] = (parent, process)
                 else:
-                    self.local[slot] = AgentLearner(slot, encoder, settings, seed)
+                    self.local[slot] = AgentLearner(
+                        slot, encoder, settings, seed, device=device
+                    )
             deadline = time.monotonic() + self.timeout
             for slot, (pipe, _) in self.workers.items():
                 if (

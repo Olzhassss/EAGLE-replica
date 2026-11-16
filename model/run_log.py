@@ -8,7 +8,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from .settings import Scenario
+from .scenario import Scenario
 
 
 class RunLog:

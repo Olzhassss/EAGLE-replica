@@ -15,7 +15,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Any
 
-from .settings import DEFAULT_SCENARIO, ROOT, load_scenario
+from .scenario import DEFAULT_SCENARIO, ROOT, load_scenario
 
 DEFAULT_RECIPE = ROOT / "scenarios/corpora-example.json"
 PCAP_BYTE_ORDER = {

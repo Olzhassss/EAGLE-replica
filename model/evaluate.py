@@ -12,13 +12,13 @@ import numpy as np
 import torch
 
 from .checkpoints import load_inference_model
-from .cli import add_trial_arguments, parse_trial_inputs
+from .cli import add_trial_arguments, parse_trial_inputs, resolve_device
 from .controller_client import ControllerClient
 from .emulation import Emulation
 from .joint_environment import JointEnvironment
-from .observations import ObservationEncoder, make_encoder
+from .observations import make_encoder
 from .run_log import RunLog, read_calibration, read_events
-from .settings import Scenario
+from .scenario import Scenario
 from .trials import run_trial
 
 
@@ -31,40 +31,16 @@ def evaluate(
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     slots = scenario.controller_ids
-    config = settings["embedding"]
-    calibration = read_calibration(args.normalize_from) if args.normalize_from else ()
-    if args.checkpoint or args.legacy_agent:
-        # Native checkpoints supply their own fitted preprocessing parameters.
-        encoder = (
-            make_encoder(scenario, settings, calibration)
-            if config["normalization"] != "source" or args.normalize_from
-            else ObservationEncoder(
-                slots,
-                config["order"],
-                config["eval_points"],
-                settings["observation_view"] == "configured",
-            )
-        )
-        per_agent = {}
-        for entry in args.legacy_agent or ():
-            slot, separator, path = entry.partition("=")
-            if not separator or not path or slot in per_agent:
-                raise ValueError("Use --legacy-agent ID=PATH once per configured slot")
-            per_agent[slot] = Path(path)
-        if (
-            per_agent
-            and config["normalization"] == "source"
-            and not args.normalize_from
-        ):
-            raise ValueError("Legacy agent files require a fixed normalization profile")
-        policy, encoder = load_inference_model(
-            args.checkpoint,
-            per_agent,
-            scenario,
-            encoder,
-            require_native=config["normalization"] == "source"
-            and not args.normalize_from,
-        )
+    calibration = (
+        read_calibration(args.normalize_from)
+        if args.normalize_from and not args.checkpoint
+        else ()
+    )
+    device = None
+    if args.checkpoint:
+        device = resolve_device(args.device)
+        policy, encoder = load_inference_model(args.checkpoint, scenario)
+        policy.to(device)
         decide = lambda observation, _: policy.decide(observation)
         method = args.method or "EAGLE"
     elif args.fixed:
@@ -83,17 +59,11 @@ def evaluate(
         decide = external
         method = args.method or args.policy
 
-    checkpoints = (
-        [args.checkpoint]
-        if args.checkpoint
-        else list(set(per_agent.values()))
-        if args.legacy_agent
-        else []
-    )
     hashes = {}
-    for path in sorted(checkpoints):
-        with path.open("rb") as stream:
-            hashes[str(path)] = hashlib.file_digest(stream, "sha256").hexdigest()
+    if args.checkpoint:
+        with args.checkpoint.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        hashes[str(args.checkpoint)] = digest
     log = RunLog(
         args.output,
         scenario,
@@ -105,18 +75,24 @@ def evaluate(
         encoder=encoder.to_dict(),
         traffic_profile=args.traffic,
         checkpoint=str(args.checkpoint) if args.checkpoint else None,
-        legacy_agent=args.legacy_agent,
         fixed_action=args.fixed,
         external_policy=args.policy,
+        device=str(device) if device is not None else None,
         checkpoint_sha256=hashes,
         flow_records_path=str(args.flow_records) if args.flow_records else None,
-        calibration=str(args.normalize_from) if args.normalize_from else None,
+        calibration=(
+            str(args.normalize_from)
+            if args.normalize_from and not args.checkpoint
+            else None
+        ),
     )
     environment = JointEnvironment(
         scenario,
         settings,
         ControllerClient(scenario),
-        Emulation(args.mininet_socket, args.ryu_socket),
+        Emulation(
+            args.mininet_socket, args.ryu_socket, discover=args.traffic != "external"
+        ),
         encoder,
     )
     external_flows = {}
@@ -141,7 +117,6 @@ def _main() -> None:
     add_trial_arguments(parser)
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("--checkpoint", type=Path)
-    modes.add_argument("--legacy-agent", action="append", metavar="ID=PATH")
     modes.add_argument("--fixed", metavar="0,1,0")
     modes.add_argument(
         "--policy",

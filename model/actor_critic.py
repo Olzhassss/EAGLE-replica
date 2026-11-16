@@ -49,5 +49,9 @@ class ActorCritic(nn.Module):
     @torch.inference_mode()
     def decide(self, observation: dict[str, NDArray]) -> NDArray:
         """Return one greedy binary action per slot from global_obs [features]."""
-        data = torch.as_tensor(observation["global_obs"], dtype=torch.float32)
-        return torch.stack([actor(data).argmax(dim=-1) for actor in self.actor]).numpy()
+        device = next(self.parameters()).device
+        data = torch.as_tensor(
+            observation["global_obs"], dtype=torch.float32, device=device
+        )
+        actions = torch.stack([actor(data).argmax(dim=-1) for actor in self.actor])
+        return actions.cpu().numpy()

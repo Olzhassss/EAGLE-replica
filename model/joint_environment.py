@@ -17,7 +17,7 @@ from .controller_client import (
 from .emulation import Emulation
 from .observations import ObservationEncoder
 from .reward import compute_reward
-from .settings import Scenario
+from .scenario import Scenario
 
 
 class JointEnvironment:
@@ -66,11 +66,10 @@ class JointEnvironment:
     ) -> list[dict[str, Any]]:
         deadline = time.monotonic() + self.sample_timeout
         last = "no samples"
-        mode = self.settings["observation_view"]
         with ThreadPoolExecutor(max_workers=len(self.slots)) as executor:
             while time.monotonic() < deadline:
                 jobs = [
-                    executor.submit(self.client.fetch_stats, slot, mode)
+                    executor.submit(self.client.fetch_stats, slot)
                     for slot in self.slots
                 ]
                 try:

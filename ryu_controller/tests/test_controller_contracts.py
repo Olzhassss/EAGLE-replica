@@ -11,6 +11,7 @@ from ryu.ofproto import (
     ofproto_v1_5,
     ofproto_v1_5_parser,
 )
+from ryu_controller.controller import EagleController
 from ryu_controller.openflow_rules import (
     COOKIE,
     apply_forwarding_rules,
@@ -34,13 +35,11 @@ class ControllerContracts(unittest.TestCase):
         self.frames = {slot: {"ports": ports} for slot in self.scenario.controllers}
         self.topology.update_presence(self.frames)
 
-    def test_active_routing_removes_support_while_configured_observation_keeps_it(
-        self,
-    ) -> None:
+    def test_active_observation_and_routing_remove_disabled_support(self) -> None:
         self.topology.set_support_action("c0", 0, [1, "c0"])
         self.topology.update_presence(self.frames)
         self.assertNotIn("s12", self.topology.active)
-        self.assertIn("s12", self.topology.observation_graph("c0", "configured"))
+        self.assertNotIn("s12", self.topology.observation_graph("c0"))
         rules = plan_forwarding_rules(self.topology.active, self.scenario)
         self.assertEqual(rules["s12"], {})
         self.assertTrue(rules["s6"])
@@ -57,6 +56,37 @@ class ControllerContracts(unittest.TestCase):
         self.assertEqual(counter_delta(11, 10), 1)
         self.assertEqual(compute_link_utilization(125, 2, 1000), 0.5)
         self.assertEqual(compute_link_utilization(1, 2, 1000), 0.0)
+
+    def test_snapshot_counts_delivered_bytes_and_uses_poll_duration(self) -> None:
+        edge = self.topology.active["s6"]["s9"]
+        telemetry = Telemetry(self.scenario)
+        telemetry.latest = {
+            "sample_id": 1,
+            "sampled_at": 3,
+            "window_start": 1,
+            "sample_duration_seconds": 2,
+            "ports": {"s6": {edge["ports"]["s6"]: (0, edge["capacity_bps"] // 8)}},
+            "flows": {"s6": {("h4", "h1"): 1024}, "s1": {("h4", "h1"): 512}},
+            "port_counters": {},
+            "flow_counters": {},
+        }
+        controller = SimpleNamespace(
+            topology=self.topology,
+            telemetry=telemetry,
+            controller_id="c0",
+            scenario=self.scenario,
+            incarnation="test",
+            rule_timing={},
+        )
+        snapshot = EagleController.stats(controller, "c0")
+        self.assertEqual(snapshot["delivered_bytes"], {"h4 h1": 512})
+        weights = {
+            frozenset((row["source"], row["target"])): row["weight"]
+            for row in snapshot["topology"]["links"]
+        }
+        self.assertEqual(weights[frozenset(("s6", "s9"))], 0.5)
+        self.assertEqual(weights[frozenset(("s1", "s6"))], 0)
+        self.assertFalse({"demands", "throughput", "stats"} & snapshot.keys())
 
     def test_serialize_switch_commands_for_both_versions(self) -> None:
         for ofp, parser in (

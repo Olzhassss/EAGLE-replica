@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .settings import ROOT
+from .scenario import ROOT
 
 
 def run_matrix(manifest: dict[str, Any], directory: Path) -> bool:

@@ -12,6 +12,18 @@ from .consensus import mix_contributions, pack_contribution
 from .observations import ObservationEncoder
 
 
+def _cpu_state(value: Any) -> Any:
+    if isinstance(value, torch.Tensor):
+        return value.cpu()
+    if isinstance(value, dict):
+        return {key: _cpu_state(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_cpu_state(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_cpu_state(item) for item in value)
+    return value
+
+
 class AgentLearner:
     def __init__(
         self,
@@ -19,22 +31,30 @@ class AgentLearner:
         encoder: ObservationEncoder,
         settings: dict[str, Any],
         seed: int,
+        *,
+        device: torch.device | str = "cpu",
     ) -> None:
         self.encoder = encoder
         self.index = encoder.controller_ids.index(slot)
         self.settings = settings
+        self.device = torch.device(device)
         torch.manual_seed(seed + self.index)
+        # Preserve the action RNG format across CPU and CUDA resumes.
         self.generator = torch.Generator().manual_seed(seed + 1_000 + self.index)
-        self.actor = make_actor(encoder.size)
-        self.critic = make_value_network(encoder.size)
-        self.estimator = make_value_network(encoder.size + len(encoder.controller_ids))
+        self.actor = make_actor(encoder.size).to(self.device)
+        self.critic = make_value_network(encoder.size).to(self.device)
+        self.estimator = make_value_network(
+            encoder.size + len(encoder.controller_ids),
+        ).to(self.device)
         self.optimizers = {
             "actor": torch.optim.Adam(self.actor.parameters(), lr=settings["actor_lr"]),
             "critic": torch.optim.Adam(
-                self.critic.parameters(), lr=settings["critic_lr"]
+                self.critic.parameters(),
+                lr=settings["critic_lr"],
             ),
             "estimator": torch.optim.Adam(
-                self.estimator.parameters(), lr=settings["estimator_lr"]
+                self.estimator.parameters(),
+                lr=settings["estimator_lr"],
             ),
         }
         self.mu = 0.0
@@ -45,25 +65,34 @@ class AgentLearner:
     @torch.inference_mode()
     def decide(self, observation: list[float] | NDArray) -> int:
         """Sample one action for this slot from its categorical actor."""
-        logits = self.actor(torch.as_tensor(observation, dtype=torch.float32))
-        return int(
-            torch.multinomial(
-                logits.softmax(dim=-1), 1, generator=self.generator
-            ).item()
-        )
+        state = torch.as_tensor(observation, dtype=torch.float32, device=self.device)
+        probabilities = self.actor(state).softmax(dim=-1).cpu()
+        return int(torch.multinomial(probabilities, 1, generator=self.generator).item())
 
     def learn(self, mode: str, batch: dict[str, list[Any]]) -> dict[str, float]:
         """Update on a batch of (state, joint action, rewards, next state, terminated)."""
-        states = torch.as_tensor(batch["state"], dtype=torch.float32)
-        next_states = torch.as_tensor(batch["next_state"], dtype=torch.float32)
-        actions = torch.as_tensor(batch["action"], dtype=torch.long)
-        rewards = torch.as_tensor(batch["reward"], dtype=torch.float32)[:, self.index]
-        bootstrap = 1 - torch.as_tensor(batch["terminated"], dtype=torch.float32)
-        legacy = self.settings["estimator_input"] == "next_state_scaled_actions"
-        if legacy:
-            estimator_input = torch.cat((next_states, actions.float() * 100), dim=-1)
-        else:
-            estimator_input = torch.cat((states, actions.float()), dim=-1)
+        states = torch.as_tensor(
+            batch["state"],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        next_states = torch.as_tensor(
+            batch["next_state"],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        actions = torch.as_tensor(batch["action"], dtype=torch.long, device=self.device)
+        rewards = torch.as_tensor(
+            batch["reward"],
+            dtype=torch.float32,
+            device=self.device,
+        )[:, self.index]
+        bootstrap = 1 - torch.as_tensor(
+            batch["terminated"],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        estimator_input = torch.cat((states, actions.float()), dim=-1)
         self.estimator.train(mode != "frozen")
         if mode == "frozen":
             with torch.no_grad():
@@ -74,7 +103,8 @@ class AgentLearner:
         metrics = {}
         if mode in ("pretrain", "online"):
             metrics["estimator_loss"] = self._optimize(
-                "estimator", F.mse_loss(estimate, rewards)
+                "estimator",
+                F.mse_loss(estimate, rewards),
             )
         if mode == "pretrain":
             return metrics
@@ -86,7 +116,8 @@ class AgentLearner:
         metrics["critic_loss"] = self._optimize("critic", F.mse_loss(value, target))
         policy = Categorical(logits=self.actor(states))
         metrics["actor_loss"] = self._optimize(
-            "actor", -(policy.log_prob(actions[:, self.index]) * advantage).mean()
+            "actor",
+            -(policy.log_prob(actions[:, self.index]) * advantage).mean(),
         )
         beta = self.settings["critic_lr"]
         self.mu = (1 - beta) * self.mu + beta * rewards.mean().item()
@@ -133,7 +164,7 @@ class AgentLearner:
             self.mu = updated
 
     def state_dict(self) -> dict[str, Any]:
-        return {
+        state = {
             "actor": self.actor.state_dict(),
             "critic": self.critic.state_dict(),
             "estimator": self.estimator.state_dict(),
@@ -144,6 +175,7 @@ class AgentLearner:
             "mu": self.mu,
             "action_rng": self.generator.get_state(),
         }
+        return state if self.device.type == "cpu" else _cpu_state(state)
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.actor.load_state_dict(state["actor"])

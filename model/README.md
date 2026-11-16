@@ -9,13 +9,7 @@ model/.venv/bin/python -m pip install -r model/requirements.txt
 
 Start the [Ryu](../ryu_controller/README.md) and [Mininet](../mininet_nets/README.md) projects with the same scenario first.
 
-```sh
-model/.venv/bin/python -m model.train --mininet-socket "$(cat mininet_nets/.socket)" \
-  --traffic synthetic --episodes 3 --output runs/train-v0
-
-model/.venv/bin/python -m model.evaluate --mininet-socket "$(cat mininet_nets/.socket)" \
-  --traffic synthetic --checkpoint runs/train-v0/checkpoint.pth --output runs/eval-v0
-```
+Follow [pipeline.md](../pipeline.md) to collect source calibration, train, and evaluate. Local trials discover the launcher addresses in `mininet_nets/.socket` and the repository-root `.socket`. The corresponding CLI flags override these addresses.
 
 ## Entry points and files
 
@@ -30,13 +24,25 @@ model/.venv/bin/python -m model.evaluate --mininet-socket "$(cat mininet_nets/.s
 
 `controller_client.py` owns HTTP readiness, acknowledgments, and retries. `joint_environment.py` owns trial reset, joint action timing, and coherent sample selection. `observations.py` and `reward.py` implement numerical preprocessing and reward calculation. The actor-critic, optimizer and consensus code live in `actor_critic.py`, `learner.py`, `consensus.py`, and `workers.py`.
 
+Training and checkpoint evaluation default to `--device auto`, which selects CUDA when available to PyTorch and CPU otherwise. Use `--device cuda` to require a GPU, `--device cuda:1` to select the second visible GPU, or `--device cpu` to force CPU. All training workers use the selected device. The run manifest records the device, and checkpoints can be loaded and resumed on either CPU or CUDA.
+
 `global_obs` is a float32 vector in scenario controller order. A local Feather fingerprint has `4 × order × eval_points` features. V0 has a 12-element vector with the default `g=1`, `e=1`. Training batches preserve that slot order in actions and rewards. A trial horizon produces a truncation and retains bootstrapping for continuing-state value estimates.
+
+## Run settings
+
+[`default.json`](../settings/default.json) is the study-oriented example used by training and evaluation. It uses five-second decisions, source-fitted normalization, throughput and power reward, and the current-state binary-action estimator. Its power coefficients, normalization references, batch and timing inputs, and single online stage are local example choices. Use the source calibration commands in the pipeline before training.
+
+[`study.json`](../settings/study.json) specifies the reported five-second decision interval, Feather dimensions, actor and critic learning rates, reward coefficient, dynamic pruning endpoints, and five curriculum stages after estimator pretraining. Copy it and fill the null fields using recovered experiment values. Source calibration uses `model.evaluate --identity-normalization` followed by `model.train --normalize-from`.
+
+Each training stage can specify `active_agents` as a subset of logical slots participating in learner updates. The trainer still produces an action for every slot. Optionally supply `learning.mixing_weights` as one map of peer ID to weight per receiving slot. Each row is renormalized over active contributors. The default mixes all active agents equally.
+
+Each settings profile can specify a resource mode (`forwarding`, `interfaces`, or `ovs`), and a list of failure events. Events run before their zero-based step `step`. Specify `kind: "link"`, `source`, `target` and boolean `up` for a link event. Use `kind: "controller"`, `controller_id` and boolean `up` for a controller outage or restore. For modeled carbon, specify `carbon.intensity_grams_per_kwh` for every active link endpoint and switch in a power-enabled configuration.
 
 ## Checkpoints and inputs
 
-A run writes settings and provenance to `run.json` and controller snapshots, raw embeddings, actions, optimizer information, timing, and flow observations to `events.jsonl`. Training saves `checkpoint.pth` at each episode boundary. For `--resume`, keep the original settings, stage schedule, scenario, and seed, and use a new output directory. The saved checkpoint carries the optimizer, running reward, pruning round, and per-agent sampling state. Legacy combined checkpoint dictionaries can be loaded with `--checkpoint`. Use repeated `--legacy-agent ID=PATH` options for old multi-file checkpoints keyed by the original slot indices.
+A run writes settings and provenance to `run.json` and controller snapshots, raw embeddings, actions, optimizer information, timing, and flow observations to `events.jsonl`. Training saves `checkpoint.pth` at each episode boundary. For `--resume`, keep the original settings, stage schedule, scenario, and seed, and use a new output directory. The saved checkpoint carries the optimizer, running reward, pruning round, and per-agent sampling state. Use `--checkpoint` to evaluate a native EAGLE training checkpoint.
 
-For new source normalization, record fixed-policy source runs with `--identity-normalization`, then pass their events to training with `--normalize-from`. That fitted state travels in the checkpoint and is reused for target evaluation. Use an identical observation view and controller slot order when loading the checkpoint on a new topology. Use `--replay-from events.jsonl` for offline training on recorded transitions, with a settings profile and source embeddings that match the recording. The runner re-encodes the saved raw embeddings with the selected normalization.
+For new source normalization, record fixed-policy source runs with `--identity-normalization`, then pass their events to training with `--normalize-from`. That fitted state travels in the checkpoint and is reused for target evaluation. Use the same controller slot order when loading the checkpoint on a new topology. Use `--replay-from events.jsonl` for offline training on recorded transitions, with a settings profile and source embeddings that match the recording. The runner re-encodes the saved raw embeddings with the selected normalization.
 
 See [study inputs](../scenarios/README.md#published-protocol) for the values that require original data. For a remote testbed, `--traffic external` uses the scenario controllers without a local Mininet socket. Supply receiver measurements as JSON lines with `--flow-records`. Each record carries `episode` (optional, defaults to 1), `offered_bytes`, `received_bytes`, and `fct_seconds` (null for incomplete flows). Optional fields include `matched_packets`, `packet_delay_sum_seconds`, and `first_byte_seconds`.
 

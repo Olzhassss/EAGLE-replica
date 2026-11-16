@@ -1,9 +1,25 @@
-"""Control an explicitly selected local emulator and controller supervisor."""
+"""Control the local emulator and controller supervisor."""
 
 import json
 import socket
 from pathlib import Path
 from typing import Any
+
+from .scenario import ROOT
+
+
+def _socket_address(override: Path | str | None, address_file: Path | None) -> Path | None:
+    if override is not None:
+        return Path(override)
+    if address_file is None:
+        return None
+    try:
+        address = address_file.read_text().strip()
+    except FileNotFoundError:
+        return None
+    if not address:
+        raise ValueError(f"No control socket address in {address_file}")
+    return Path(address)
 
 
 def unix_command(path: Path | str | None, operation: str, **arguments: Any) -> Any:
@@ -27,35 +43,38 @@ class Emulation:
         self,
         mininet_socket: Path | str | None = None,
         ryu_socket: Path | str | None = None,
+        *,
+        discover: bool = True,
     ) -> None:
-        self.mininet_socket = (
-            Path(mininet_socket) if mininet_socket is not None else None
+        self.mininet_socket = _socket_address(
+            mininet_socket, ROOT / "mininet_nets/.socket" if discover else None
         )
-        self.ryu_socket = Path(ryu_socket) if ryu_socket is not None else None
+        self.ryu_socket = _socket_address(
+            ryu_socket, ROOT / ".socket" if discover else None
+        )
 
     def reset(self, fingerprint: str, mode: str, traffic: str) -> None:
+        if self.mininet_socket:
+            status = unix_command(self.mininet_socket, "status")
+            if status["scenario"] != fingerprint or (
+                traffic != "external" and traffic not in status["traffic_profiles"]
+            ):
+                raise ValueError(
+                    "Mininet scenario or traffic profile does not match the trial",
+                )
+        elif mode != "forwarding" or traffic not in ("idle", "external"):
+            raise ValueError(
+                "Start Mininet to create mininet_nets/.socket or pass --mininet-socket",
+            )
         if self.ryu_socket:
             unix_command(self.ryu_socket, "restore")
-        if not self.mininet_socket:
-            if mode != "forwarding" or traffic not in ("idle", "external"):
-                raise ValueError(
-                    "Managed traffic and hardware changes require --mininet-socket",
-                )
-            return
-        status = unix_command(self.mininet_socket, "status")
-        if (
-            status["scenario"] != fingerprint
-            or traffic not in status["traffic_profiles"]
-        ):
-            raise ValueError(
-                "Mininet scenario or traffic profile does not match the trial",
-            )
-        unix_command(self.mininet_socket, "reset", resource_mode=mode)
+        if self.mininet_socket:
+            unix_command(self.mininet_socket, "reset", resource_mode=mode)
 
     def start_traffic(self, profile: str) -> dict[str, Any]:
         return (
             unix_command(self.mininet_socket, "traffic", profile=profile)
-            if self.mininet_socket
+            if self.mininet_socket and profile != "external"
             else {}
         )
 

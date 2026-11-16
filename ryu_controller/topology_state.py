@@ -196,9 +196,9 @@ class TopologyState:
             host for host in self.scenario.hosts if not self.active.degree(host)
         )
 
-    def observation_graph(self, slot: str, view: str) -> nx.Graph:
+    def observation_graph(self, slot: str) -> nx.Graph:
         """Include the subnet and links incident on its switches."""
-        graph = self.active if view == "active" else self.configured
+        graph = self.active
         local = {
             node
             for node, row in self.scenario.switches.items()

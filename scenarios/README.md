@@ -37,20 +37,9 @@ ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py \
 sudo python3 mininet_nets/launch_topology.py --scenario runs/corpora-v0/scenario.json
 ```
 
-In a third terminal, read the address with `MININET_SOCKET=$(cat mininet_nets/.socket)` from the repository root and run the compatibility-profile example.
+Follow the [pipeline](../pipeline.md#3-train-on-digital-corpora-and-evaluate-on-its-held-out-window) for source calibration, training on `pcap-train`, and frozen evaluation on `pcap-eval`.
 
-```sh
-model/.venv/bin/python -m model.train --scenario runs/corpora-v0/scenario.json \
-  --mininet-socket "$MININET_SOCKET" --traffic pcap-train \
-  --episodes 3 --episode-steps 8 --output runs/pcap-train
-
-model/.venv/bin/python -m model.evaluate --scenario runs/corpora-v0/scenario.json \
-  --mininet-socket "$MININET_SOCKET" --traffic pcap-eval \
-  --checkpoint runs/pcap-train/checkpoint.pth --episode-steps 8 \
-  --keep-captures --output runs/pcap-eval
-```
-
-Replay restarts each episode. Size the episode to cover the latest scheduled start and `provenance.estimated_replay_seconds`, with time for a final observation. The example uses roughly 32 seconds at four seconds per decision. Flow records in `events.jsonl` report offered and received payload bytes and the replay completion time. `--keep-captures` retains sender and receiver PCAPs. The IP and TCP headers stay as captured because routing and replay use the rewritten MAC addresses. Completion measures delivery of the selected payload window at the capture interface.
+Replay restarts each episode. Size the episode to cover the latest scheduled start and `provenance.estimated_replay_seconds`, with time for a final observation. The example uses 40 seconds at five seconds per decision. Flow records in `events.jsonl` report offered and received payload bytes and the replay completion time. `--keep-captures` retains sender and receiver PCAPs. The IP and TCP headers stay as captured because routing and replay use the rewritten MAC addresses. Completion measures delivery of the selected payload window at the capture interface.
 
 ## Run Megalodon for T2
 
@@ -68,14 +57,7 @@ model/.venv/bin/python -m model.prepare_traces runs/megalodon-input/content-firs
   --output runs/megalodon-v0
 ```
 
-Restart both launchers with `--scenario runs/megalodon-v0/scenario.json` and refresh the address with `MININET_SOCKET=$(cat mininet_nets/.socket)`. The generated scenario includes the Corpora profiles as well as `megalodon-t2`. Reuse the Corpora checkpoint and the observation and reward settings used for source evaluation. The command below uses the default compatibility profile.
-
-```sh
-model/.venv/bin/python -m model.evaluate --scenario runs/megalodon-v0/scenario.json \
-  --mininet-socket "$MININET_SOCKET" --traffic megalodon-t2 \
-  --checkpoint runs/pcap-train/checkpoint.pth --episode-steps 8 \
-  --keep-captures --output runs/eval-megalodon-t2
-```
+Restart both launchers with `--scenario runs/megalodon-v0/scenario.json`. Use the [pipeline evaluation command](../pipeline.md#4-evaluate-the-corpora-checkpoint-on-megalodon) with that scenario and your Corpora-trained checkpoint.
 
 The paper uses Megalodon as unseen traffic for T2. Keep it out of source training and normalization. Use the same reconstructed window and rate for matched baseline runs.
 
@@ -83,7 +65,7 @@ The paper uses Megalodon as unseen traffic for T2. Keep it out of source trainin
 
 Copy an example recipe and pass it with `--recipe` to prepare other windows and host pairs. Each job uses inclusive, 1-based frame numbers from the input capture, a host pair, a start offset in seconds, and a rate in bps. Set `flow` to the captured IPv4 TCP direction. Specify both ports to select one connection tuple, or omit both to select all TCP payload between the two addresses in that direction. Use separate jobs for different ordered host pairs to compose the offered load in a profile. Split large windows before their TCP sequence space repeats. The generated jobs record input and rewritten SHA-256 hashes, source frame ranges, payload counts, and estimated replay duration. Extra captures can be prepared in a second invocation by supplying the first generated scenario with `--scenario` and a recipe with new profile names.
 
-For the published protocol, prepare T0 from Digital Corpora and map its five training conditions to the `learning.stages` in a completed copy of [study.json](study.json). Use TrEnv 1 for uncongested traffic, TrEnvs 2–4 for the individual subnet hotspots, and TrEnv 5 for concurrent congestion in all three subnets. Fit normalization on source-only calibration runs, then train with `--settings` pointing to that completed profile and `--normalize-from` pointing to the calibration events. Reuse the source checkpoint with `model.evaluate` for the held-out scenarios. Supply the lower-utilization Corpora window for T1, Megalodon for T2, and higher-utilization Corpora windows for T3 and T4. Run the comparisons with matched traffic, fixed-action baselines and ten repetitions per condition.
+For the published protocol, prepare T0 from Digital Corpora and map its five training conditions to the `learning.stages` in a completed copy of [study.json](../settings/study.json). Use TrEnv 1 for uncongested traffic, TrEnvs 2–4 for the individual subnet hotspots, and TrEnv 5 for concurrent congestion in all three subnets. Fit normalization on source-only calibration runs, then train with `--settings` pointing to that completed profile and `--normalize-from` pointing to the calibration events. Reuse the source checkpoint with `model.evaluate` for the held-out scenarios. Supply the lower-utilization Corpora window for T1, Megalodon for T2, and higher-utilization Corpora windows for T3 and T4. Run the comparisons with matched traffic, fixed-action baselines and ten repetitions per condition.
 
 The paper gives a five-second decision interval and the curriculum structure. Exact frame intervals, host mappings, replay rates, phase lengths, reward normalization, and initial baseline settings still require provenance. See [Published protocol](#published-protocol) for the remaining inputs.
 
@@ -119,27 +101,13 @@ Digital Corpora publishes packet captures in its [corpus browser](https://downlo
    ]
    ```
 
-3. Start both launchers with `--scenario scenarios/v0-pcap.json` using the [root startup sequence](../README.md#start-an-experiment). The Mininet host needs `tcpreplay` and `tcpdump`. Read the address with `MININET_SOCKET=$(cat mininet_nets/.socket)` from the repository root, then select the trial profile. Set `--episode-steps` to cover the replay start and duration plus time for a final observation. The compatibility profile schedules four seconds per decision and replay restarts each episode.
-
-   ```sh
-   model/.venv/bin/python -m model.train --scenario scenarios/v0-pcap.json \
-     --mininet-socket "$MININET_SOCKET" --traffic pcap-train --output runs/pcap-train
-   model/.venv/bin/python -m model.evaluate --scenario scenarios/v0-pcap.json \
-     --mininet-socket "$MININET_SOCKET" --traffic pcap-eval \
-     --checkpoint runs/pcap-train/checkpoint.pth --keep-captures --output runs/pcap-eval
-   ```
+3. Start both launchers with `--scenario scenarios/v0-pcap.json` using the [root startup sequence](../README.md#start-an-experiment). Use the [pipeline training commands](../pipeline.md#1-define-the-source-training-sequence) with this scenario and your two traffic profiles. Set `--episode-steps` to cover the replay start and duration plus time for a final observation. Replay restarts each episode.
 
 The capture supplies live traffic in Mininet. EAGLE learns from the resulting controller observations, actions, and rewards. The evaluator computes replay completion from the sender and receiver captures. Use `events.jsonl` for flow records and `--keep-captures` to retain the raw packet evidence.
 
 ## Run settings
 
-[`compatibility.json`](compatibility.json) preserves the checkout's four-second decision interval, legacy observation preprocessing, and truncated reward with an enabled-switch penalty. The corrected controller and learner have their own implementations and require a future parity comparison.
-
-[`study.json`](study.json) specifies the reported five-second decision interval, Feather dimensions, actor and critic learning rates, reward coefficient, dynamic pruning endpoints, and five curriculum stages after estimator pretraining. Copy it and fill the null fields using recovered experiment values. Source calibration uses `model.evaluate --identity-normalization` followed by `model.train --normalize-from`.
-
-Each training stage can specify `active_agents` as a subset of logical slots participating in learner updates. The trainer still produces an action for every slot. Optionally supply `learning.mixing_weights` as one map of peer ID to weight per receiving slot. Each row is renormalized over active contributors. The default mixes all active agents equally.
-
-Each settings profile can specify a resource mode (`forwarding`, `interfaces`, or `ovs`), and a list of failure events. Events run before their zero-based step `step`. Specify `kind: "link"`, `source`, `target` and boolean `up` for a link event. Use `kind: "controller"`, `controller_id` and boolean `up` for a controller outage or restore. For modeled carbon, specify `carbon.intensity_grams_per_kwh` for every active link endpoint and switch in a power-enabled configuration.
+Pass the shared topology to all three launchers with `--scenario`. Training and evaluation take their experiment parameters separately through [`--settings`](../model/README.md#run-settings).
 
 ## Published protocol
 

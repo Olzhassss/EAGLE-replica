@@ -8,13 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from .checkpoints import load_checkpoint, save_checkpoint
-from .cli import add_trial_arguments, parse_trial_inputs
+from .cli import add_trial_arguments, parse_trial_inputs, resolve_device
 from .controller_client import ControllerClient
 from .emulation import Emulation
 from .joint_environment import JointEnvironment
 from .observations import ObservationEncoder, make_encoder
 from .run_log import RunLog, read_calibration, read_events
-from .settings import Scenario, training_stages
+from .scenario import Scenario
+from .settings import training_stages
 from .trials import run_trial
 from .workers import AgentPool
 
@@ -46,6 +47,7 @@ def train(
     encoder: ObservationEncoder,
     resume: dict[str, Any] | None,
 ) -> None:
+    device = resolve_device(args.device)
     log = RunLog(
         args.output,
         scenario,
@@ -55,12 +57,14 @@ def train(
         encoder=encoder.to_dict(),
         stages=stages,
         worker_mode=args.workers,
+        device=str(device),
         resume=str(args.resume) if args.resume else None,
         calibration=str(args.normalize_from) if args.normalize_from else None,
         replay=str(args.replay_from) if args.replay_from else None,
         condition=scenario.data["id"],
         expected_episodes=sum(item["episodes"] for item in stages),
     )
+    print(f"Training device: {device}", flush=True)
     round_number = resume["round"] if resume else 0
     episode = 0
     with AgentPool(
@@ -68,6 +72,7 @@ def train(
         settings["learning"],
         args.seed,
         distributed=args.workers == "process",
+        device=device,
     ) as agents:
         if resume:
             agents.load_state_dict(resume["agents"])
@@ -75,7 +80,12 @@ def train(
             scenario,
             settings,
             ControllerClient(scenario),
-            Emulation(args.mininet_socket, args.ryu_socket),
+            Emulation(
+                args.mininet_socket,
+                args.ryu_socket,
+                discover=not args.replay_from
+                and any(stage["traffic"] != "external" for stage in stages),
+            ),
             encoder,
             encode_local=agents.embed,
         )
@@ -151,7 +161,6 @@ def train(
                 save_checkpoint(
                     args.output / "checkpoint.pth",
                     {
-                        "format_version": 1,
                         "encoder": encoder.to_dict(),
                         "agents": agents.state_dict(),
                         "seed": args.seed,
@@ -223,8 +232,7 @@ def _main() -> None:
         resume = load_checkpoint(args.resume) if args.resume else None
         if resume:
             if (
-                resume.get("format_version") != 1
-                or resume["seed"] != args.seed
+                resume["seed"] != args.seed
                 or resume["scenario_sha256"] != scenario.fingerprint
                 or resume["settings"] != settings
                 or resume["stages"] != stages

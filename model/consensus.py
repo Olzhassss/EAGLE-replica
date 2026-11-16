@@ -98,7 +98,7 @@ def mix_contributions(
                 target = mixed[component][name]
                 if tuple(target.shape) != payload[0]:
                     raise ValueError("Consensus shape does not match " + name)
-                target.add_(_unpack_tensor(*payload), alpha=weight)
+                target.add_(_unpack_tensor(*payload).to(target.device), alpha=weight)
     for component, model in networks.items():
         model.load_state_dict(mixed[component])
     return new_mu

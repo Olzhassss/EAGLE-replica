@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
+ADDRESS_FILE = ROOT / ".socket"
 
 
 class ControllerSupervisor:
@@ -120,6 +121,7 @@ def _main() -> None:
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop_on_signal)
+    address = None
     try:
         with tempfile.TemporaryDirectory(prefix="eagle-ryu-") as directory:
             address = str(Path(directory) / "control.sock")
@@ -127,15 +129,15 @@ def _main() -> None:
                 server.supervisor = supervisor
                 for controller_id in supervisor.controllers:
                     supervisor.start(controller_id)
-                with Path(".socket").open("w") as f:
-                    f.write(address)
+                ADDRESS_FILE.write_text(address)
                 server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         pass
     finally:
         for controller_id in supervisor.controllers:
             supervisor.stop(controller_id)
-        Path(".socket").unlink()
+        if ADDRESS_FILE.exists() and ADDRESS_FILE.read_text() == address:
+            ADDRESS_FILE.unlink()
 
 
 if __name__ == "__main__":
