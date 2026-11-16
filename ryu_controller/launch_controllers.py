@@ -127,13 +127,15 @@ def _main() -> None:
                 server.supervisor = supervisor
                 for controller_id in supervisor.controllers:
                     supervisor.start(controller_id)
-                print("Ryu supervisor socket: " + address, flush=True)
+                with Path(".socket").open("w") as f:
+                    f.write(address)
                 server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         pass
     finally:
         for controller_id in supervisor.controllers:
             supervisor.stop(controller_id)
+        Path(".socket").unlink()
 
 
 if __name__ == "__main__":

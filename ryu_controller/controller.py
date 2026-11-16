@@ -453,7 +453,7 @@ class EagleApi(ControllerBase):
         self.app = data["app"]
 
     @route("eagle", "/network/state", methods=["GET"])
-    def get_state(self, **_) -> Response:
+    def get_state(self, _: Request, **__) -> Response:
         with self.app.lock:
             return _response(self.app.presence())
 

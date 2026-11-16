@@ -16,8 +16,10 @@ def request_master(datapath: Datapath, generation_id: int) -> None:
     ofp = datapath.ofproto
     datapath.send_msg(
         datapath.ofproto_parser.OFPRoleRequest(
-            datapath, ofp.OFPCR_ROLE_MASTER, generation_id
-        )
+            datapath,
+            ofp.OFPCR_ROLE_MASTER,
+            generation_id,
+        ),
     )
 
 
@@ -25,8 +27,10 @@ def request_slave(datapath: Datapath, generation_id: int) -> None:
     ofp = datapath.ofproto
     datapath.send_msg(
         datapath.ofproto_parser.OFPRoleRequest(
-            datapath, ofp.OFPCR_ROLE_SLAVE, generation_id
-        )
+            datapath,
+            ofp.OFPCR_ROLE_SLAVE,
+            generation_id,
+        ),
     )
 
 
@@ -52,7 +56,7 @@ def apply_forwarding_rules(
                 command=ofp.OFPFC_DELETE,
                 match=parser.OFPMatch(),
                 **delete_options,
-            )
+            ),
         )
         previous = {}
     for source, target in sorted(previous.keys() - desired.keys()):
@@ -63,7 +67,7 @@ def apply_forwarding_rules(
                 priority=PRIORITY,
                 match=parser.OFPMatch(eth_src=source, eth_dst=target),
                 **delete_options,
-            )
+            ),
         )
     for (source, target), port in sorted(desired.items()):
         if previous.get((source, target)) == port:
@@ -78,7 +82,7 @@ def apply_forwarding_rules(
                 priority=PRIORITY,
                 match=parser.OFPMatch(eth_src=source, eth_dst=target),
                 instructions=[
-                    parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)
+                    parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions),
                 ],
-            )
+            ),
         )
