@@ -93,7 +93,7 @@ def build_network(
         network.addSwitch(
             switch["id"],
             dpid="{:016x}".format(switch["dpid"]),
-            protocols="OpenFlow13",
+            protocols="OpenFlow13,OpenFlow15",
             failMode="secure",
             batch=False,
         )

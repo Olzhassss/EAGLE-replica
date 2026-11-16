@@ -1,4 +1,4 @@
-"""Translate EAGLE's forwarding plan into OpenFlow 1.3 messages."""
+"""Translate EAGLE's forwarding plan into OpenFlow messages."""
 
 from typing import Optional
 
@@ -18,7 +18,7 @@ def request_master(datapath: Datapath, generation_id: int) -> None:
         datapath.ofproto_parser.OFPRoleRequest(
             datapath,
             ofp.OFPCR_ROLE_MASTER,
-            generation_id,
+            generation_id=generation_id,
         ),
     )
 
@@ -29,7 +29,7 @@ def request_slave(datapath: Datapath, generation_id: int) -> None:
         datapath.ofproto_parser.OFPRoleRequest(
             datapath,
             ofp.OFPCR_ROLE_SLAVE,
-            generation_id,
+            generation_id=generation_id,
         ),
     )
 

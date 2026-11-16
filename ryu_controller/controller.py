@@ -1,4 +1,4 @@
-"""OpenFlow 1.3 routing, peer state exchange, and the EAGLE HTTP interface."""
+"""OpenFlow routing, peer state exchange, and the EAGLE HTTP interface."""
 
 import json
 import os
@@ -13,8 +13,9 @@ from ryu.controller import ofp_event
 from ryu.controller.controller import Datapath
 from ryu.controller.handler import DEAD_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.lib import hub
-from ryu.ofproto import ofproto_v1_3
-from ryu.ofproto.ofproto_v1_3_parser import OFPPort
+from ryu.ofproto import ofproto_v1_3, ofproto_v1_5
+from ryu.ofproto.ofproto_v1_3_parser import OFPPort as OFPPort13
+from ryu.ofproto.ofproto_v1_5_parser import OFPPort as OFPPort15
 from webob import Request, Response
 
 from ryu_controller.openflow_rules import (
@@ -28,9 +29,15 @@ from ryu_controller.topology_state import TopologyState, load_scenario
 
 from .routing import ForwardingRules
 
+OPENFLOW_VERSION = "1.5"
+
 
 class EagleController(app_manager.RyuApp):
-    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]  # noqa: RUF012
+    OFP_VERSIONS = [  # noqa: RUF012
+        {"1.3": ofproto_v1_3.OFP_VERSION, "1.5": ofproto_v1_5.OFP_VERSION}[
+            OPENFLOW_VERSION
+        ],
+    ]
     _CONTEXTS = {"wsgi": WSGIApplication}  # noqa: RUF012
 
     def __init__(self, *args, **kwargs) -> None:
@@ -164,10 +171,13 @@ class EagleController(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
+    @set_ev_cls(ofp_event.EventOFPFlowDescStatsReply, MAIN_DISPATCHER)
     def on_stats(
         self,
         event: Union[
-            ofp_event.EventOFPPortStatsReply, ofp_event.EventOFPFlowStatsReply
+            ofp_event.EventOFPPortStatsReply,
+            ofp_event.EventOFPFlowStatsReply,
+            ofp_event.EventOFPFlowDescStatsReply,
         ],
     ) -> None:
         with self.lock:
@@ -428,7 +438,7 @@ class EagleController(app_manager.RyuApp):
         }
 
 
-def _port_is_up(datapath: Datapath, port: OFPPort) -> bool:
+def _port_is_up(datapath: Datapath, port: Union[OFPPort13, OFPPort15]) -> bool:
     ofp = datapath.ofproto
     return not (port.config & ofp.OFPPC_PORT_DOWN or port.state & ofp.OFPPS_LINK_DOWN)
 

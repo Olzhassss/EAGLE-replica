@@ -13,6 +13,8 @@ The launcher uses its own Python 3.7 interpreter for each Ryu child and manages 
 
 ## Control and measurements
 
+Ryu defaults to OpenFlow 1.5. To use OpenFlow 1.3, set `OPENFLOW_VERSION = "1.3"` in [controller.py](controller.py) and restart Ryu. The Mininet launcher enables both versions on its Open vSwitch bridges. For external switches, enable the version selected in Ryu.
+
 - `controller.py` registers the OpenFlow event handlers and HTTP interface. It checks datapath ports against the scenario, reconciles topology across peers, establishes an OpenFlow master for each owned switch, and waits for a barrier before sampling new routes.
 - `topology_state.py` separates configured, active, and agent observation graphs. A logical slot survives controller loss because another live controller can take responsibility for its switches. Topology presence frames use a scenario fingerprint, sender identity, incarnation, and sequence. Startup expects all configured controllers and switches to appear before enabling the loop. Failover applies after startup and peer expiry.
 - `routing.py` plans a deterministic end-to-end shortest path for each ordered host MAC pair. It prefers an equal-cost path through the source domain's support switch, then chooses among remaining candidates with CRC32C. `openflow_rules.py` sends only changed EAGLE-owned rules.

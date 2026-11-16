@@ -4,11 +4,18 @@ import time
 from typing import Any, Dict, Union
 
 from ryu.controller.controller import Datapath
-from ryu.ofproto.ofproto_v1_3_parser import OFPFlowStatsReply, OFPPortStatsReply
+from ryu.ofproto import ofproto_v1_3_parser, ofproto_v1_5, ofproto_v1_5_parser
 
 from ryu_controller.openflow_rules import COOKIE, COOKIE_MASK, TABLE_ID
 
 from .topology_state import Scenario
+
+StatsReply = Union[
+    ofproto_v1_3_parser.OFPFlowStatsReply,
+    ofproto_v1_3_parser.OFPPortStatsReply,
+    ofproto_v1_5_parser.OFPFlowDescStatsReply,
+    ofproto_v1_5_parser.OFPPortStatsReply,
+]
 
 
 class Telemetry:
@@ -45,7 +52,13 @@ class Telemetry:
             port_request = parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY)
             commands.append((switch, "ports", port_request))
             if any(node in self.scenario.hosts for node in self.scenario.graph[switch]):
-                flow_request = parser.OFPFlowStatsRequest(
+                # OVS exposes per-flow counters in flow descriptions in 1.5.
+                request_type = (
+                    parser.OFPFlowDescStatsRequest
+                    if ofp.OFP_VERSION == ofproto_v1_5.OFP_VERSION
+                    else parser.OFPFlowStatsRequest
+                )
+                flow_request = request_type(
                     datapath,
                     0,
                     TABLE_ID,
@@ -63,7 +76,7 @@ class Telemetry:
         for _, _, request in commands:
             request.datapath.send_msg(request)
 
-    def receive(self, message: Union[OFPFlowStatsReply, OFPPortStatsReply]) -> None:
+    def receive(self, message: StatsReply) -> None:
         poll = self.pending
         key = (message.datapath, message.xid)
         if poll is None or key not in poll["requests"]:
@@ -84,6 +97,12 @@ class Telemetry:
             for stat in parts:
                 if stat.cookie != COOKIE:
                     continue
+                if message.datapath.ofproto.OFP_VERSION == ofproto_v1_5.OFP_VERSION:
+                    byte_count = stat.stats.get("byte_count")
+                    if byte_count is None:
+                        continue
+                else:
+                    byte_count = stat.byte_count
                 source = self.host_for_mac.get(stat.match.get("eth_src"))
                 target = self.host_for_mac.get(stat.match.get("eth_dst"))
                 if not source or not target:
@@ -92,7 +111,7 @@ class Telemetry:
                     target in self.scenario.graph[switch]
                     or source in self.scenario.graph[switch]
                 ):
-                    counters[(source, target)] = stat.byte_count
+                    counters[(source, target)] = byte_count
             poll[kind][switch] = counters
         del poll["requests"][key]
         if not poll["requests"]:
