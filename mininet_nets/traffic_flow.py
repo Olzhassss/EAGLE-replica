@@ -1,7 +1,5 @@
 """Run one scheduled TCP transfer or an explicitly configured replay command."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

@@ -1,7 +1,5 @@
 """Start scenario traffic in host namespaces and retain per-flow evidence."""
 
-from __future__ import annotations
-
 import hashlib
 import os
 import re
@@ -13,12 +11,10 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from mininet.net import Mininet
-    from mininet.node import Host
-
+from mininet.net import Mininet
+from mininet.node import Host
 
 FLOW_SCRIPT = Path(__file__).with_name("traffic_flow.py").resolve()
 
@@ -105,6 +101,7 @@ class TrialTraffic:
         return prepared
 
     def start(self, profile: str) -> dict[str, Any]:
+        # fmt: off
         self.finish()
         jobs = self._prepare(profile)
         directory = Path(tempfile.mkdtemp(prefix="trial-", dir=str(self.session_dir)))
@@ -130,27 +127,15 @@ class TrialTraffic:
                     self._spawn(
                         target,
                         [
-                            sys.executable,
-                            FLOW_SCRIPT,
-                            "receive",
-                            port,
-                            job["size_bytes"],
-                            timeout + job.get("start_seconds", 0) + 5,
-                            received,
+                            sys.executable,FLOW_SCRIPT,"receive",port,job["size_bytes"],
+                            timeout + job.get("start_seconds", 0) + 5,received
                         ],
                         log,
                     )
                     command = [
-                        sys.executable,
-                        FLOW_SCRIPT,
-                        "send",
-                        target.IP(),
-                        port,
-                        job["size_bytes"],
-                        job["rate_bps"],
-                        starts_at,
-                        timeout,
-                        sent,
+                        sys.executable,FLOW_SCRIPT,"send",
+                        target.IP(),port,job["size_bytes"],
+                        job["rate_bps"],starts_at,timeout,sent
                     ]
                     senders.append((source, command, log))
                     record.update(
@@ -163,38 +148,17 @@ class TrialTraffic:
                         self._spawn(
                             host,
                             [
-                                "tcpdump",
-                                "-Z",
-                                "root",
-                                "-U",
-                                "-s",
-                                "0",
-                                "-i",
-                                host.defaultIntf().name,
-                                "-w",
-                                capture,
-                                "ether",
-                                "src",
-                                source.MAC(),
-                                "and",
-                                "ether",
-                                "dst",
-                                target.MAC(),
-                                "and",
-                                "tcp",
+                                "tcpdump","-Z","root","-U","-s","0",
+                                "-i",host.defaultIntf().name,"-w",capture,"ether",
+                                "src",source.MAC(),"and","ether","dst",target.MAC(),"and","tcp"
                             ],
                             log,
                             capture=True,
                         )
                     command = [
-                        sys.executable,
-                        FLOW_SCRIPT,
-                        "replay",
-                        starts_at,
-                        "tcpreplay",
+                        sys.executable,FLOW_SCRIPT,"replay",starts_at,"tcpreplay",
                         "--intf1=" + source.defaultIntf().name,
-                        "--mbps=" + str(job["rate_bps"] / 1_000_000),
-                        job["resolved_path"],
+                        "--mbps=" + str(job["rate_bps"] / 1_000_000),job["resolved_path"]
                     ]
                     senders.append((source, command, log))
                     record.update(
@@ -215,6 +179,7 @@ class TrialTraffic:
             self.finish()
             raise
         return {"started_at": started_at, "flows": self.records}
+        # fmt: on
 
     def finish(self) -> dict[str, Any]:
         for process, _, capture in self.processes:

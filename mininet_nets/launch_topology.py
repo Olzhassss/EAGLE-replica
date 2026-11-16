@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import hashlib
 import ipaddress
@@ -17,12 +15,11 @@ import threading
 import time
 from pathlib import Path
 from types import FrameType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from mininet.link import Link
-    from mininet.net import Mininet
-    from mininet.node import RemoteController
+from mininet.link import Link
+from mininet.net import Mininet
+from mininet.node import RemoteController
 
 if __package__:
     from .traffic import TrialTraffic
@@ -260,6 +257,8 @@ class EmulationSession:
 
 
 class ControlRequest(socketserver.StreamRequestHandler):
+    server: Any
+
     def handle(self) -> None:
         self.connection.settimeout(10)
         credentials = self.connection.getsockopt(
@@ -271,7 +270,7 @@ class ControlRequest(socketserver.StreamRequestHandler):
         try:
             request = json.loads(self.rfile.readline(65536))
             if not isinstance(request, dict):
-                raise ValueError("Expected a JSON object")
+                raise TypeError("Expected a JSON object")
             response = {"result": self.server.session.command(request)}
         except (
             OSError,
