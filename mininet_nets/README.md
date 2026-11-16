@@ -10,7 +10,7 @@ From the repository root, start Ryu first, then run:
 sudo python3 mininet_nets/launch_topology.py --scenario scenarios/v0.json
 ```
 
-The launcher starts the scenario's OpenFlow 1.3 bridges, sets the configured switch datapath IDs and port numbers, installs static host ARP entries, and prints a Unix control socket. Pass that socket to the RL project with `--mininet-socket`. The socket accepts commands from the user who started Mininet through sudo. Add `--cli` to inspect the topology interactively. Exit the CLI or use Ctrl-C to shut down managed traffic and Mininet.
+The launcher starts the scenario's OpenFlow 1.3 bridges, sets the configured switch datapath IDs and port numbers, installs static host ARP entries, and writes the Unix control socket address to `mininet_nets/.socket`. From the repository root, pass it to the RL project with `--mininet-socket "$(cat mininet_nets/.socket)"`. The socket accepts commands from the user who started Mininet through sudo. Add `--cli` to inspect the topology interactively. Exit the CLI or use Ctrl-C to shut down managed traffic and Mininet and remove the address file. **If a forced termination leaves the file behind, remove it before restarting Mininet.**
 
 ## Traffic and physical actions
 

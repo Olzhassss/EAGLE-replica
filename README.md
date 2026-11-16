@@ -18,16 +18,16 @@ Run these commands from the repository root in separate terminals after setting 
    ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario scenarios/v0.json
    ```
 
-2. Start the emulated network with system Python. The launcher prints its control socket for the RL runner. Add `--cli` for an interactive Mininet prompt.
+2. Start the emulated network with system Python. The launcher writes its control socket address to `mininet_nets/.socket`. Add `--cli` for an interactive Mininet prompt.
 
    ```sh
    sudo python3 mininet_nets/launch_topology.py --scenario scenarios/v0.json
    ```
 
-3. Run a fixed policy with the deterministic synthetic flow. Substitute the socket path printed in step 2.
+3. Run a fixed policy with the deterministic synthetic flow.
 
    ```sh
-   model/.venv/bin/python -m model.evaluate --mininet-socket <socket-path> \
+   model/.venv/bin/python -m model.evaluate --mininet-socket "$(cat mininet_nets/.socket)" \
      --traffic synthetic --fixed 1,1,1 --episode-steps 8 --output runs/fixed-v0
    ```
 

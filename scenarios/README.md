@@ -37,7 +37,7 @@ ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py \
 sudo python3 mininet_nets/launch_topology.py --scenario runs/corpora-v0/scenario.json
 ```
 
-In a third terminal, set `MININET_SOCKET` to the path printed by Mininet and run the compatibility-profile example.
+In a third terminal, read the address with `MININET_SOCKET=$(cat mininet_nets/.socket)` from the repository root and run the compatibility-profile example.
 
 ```sh
 model/.venv/bin/python -m model.train --scenario runs/corpora-v0/scenario.json \
@@ -68,7 +68,7 @@ model/.venv/bin/python -m model.prepare_traces runs/megalodon-input/content-firs
   --output runs/megalodon-v0
 ```
 
-Restart both launchers with `--scenario runs/megalodon-v0/scenario.json` and set `MININET_SOCKET` to the new socket. The generated scenario includes the Corpora profiles as well as `megalodon-t2`. Reuse the Corpora checkpoint and the observation and reward settings used for source evaluation. The command below uses the default compatibility profile.
+Restart both launchers with `--scenario runs/megalodon-v0/scenario.json` and refresh the address with `MININET_SOCKET=$(cat mininet_nets/.socket)`. The generated scenario includes the Corpora profiles as well as `megalodon-t2`. Reuse the Corpora checkpoint and the observation and reward settings used for source evaluation. The command below uses the default compatibility profile.
 
 ```sh
 model/.venv/bin/python -m model.evaluate --scenario runs/megalodon-v0/scenario.json \
@@ -119,7 +119,7 @@ Digital Corpora publishes packet captures in its [corpus browser](https://downlo
    ]
    ```
 
-3. Start both launchers with `--scenario scenarios/v0-pcap.json` using the [root startup sequence](../README.md#start-an-experiment). The Mininet host needs `tcpreplay` and `tcpdump`. Set `MININET_SOCKET` to the path printed by Mininet, then select the trial profile. Set `--episode-steps` to cover the replay start and duration plus time for a final observation. The compatibility profile schedules four seconds per decision and replay restarts each episode.
+3. Start both launchers with `--scenario scenarios/v0-pcap.json` using the [root startup sequence](../README.md#start-an-experiment). The Mininet host needs `tcpreplay` and `tcpdump`. Read the address with `MININET_SOCKET=$(cat mininet_nets/.socket)` from the repository root, then select the trial profile. Set `--episode-steps` to cover the replay start and duration plus time for a final observation. The compatibility profile schedules four seconds per decision and replay restarts each episode.
 
    ```sh
    model/.venv/bin/python -m model.train --scenario scenarios/v0-pcap.json \

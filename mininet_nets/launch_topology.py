@@ -342,17 +342,23 @@ def main() -> None:
                 )
                 os.chown(address, owner_uid, owner_gid)
                 os.chmod(address, 0o600)
-                print("Mininet control socket: " + address, flush=True)
-                if not args.cli:
-                    server.serve_forever(poll_interval=0.25)
-                else:
-                    thread = threading.Thread(target=server.serve_forever, daemon=True)
-                    thread.start()
-                    try:
-                        CLI(network)
-                    finally:
-                        server.shutdown()
-                        thread.join()
+                socket_path = Path(__file__).resolve().with_name(".socket")
+                address_file = socket_path.open("x", encoding="utf-8")
+                try:
+                    with address_file:
+                        address_file.write(address)
+                    if not args.cli:
+                        server.serve_forever(poll_interval=0.25)
+                    else:
+                        thread = threading.Thread(target=server.serve_forever, daemon=True)
+                        thread.start()
+                        try:
+                            CLI(network)
+                        finally:
+                            server.shutdown()
+                            thread.join()
+                finally:
+                    socket_path.unlink(missing_ok=True)
         except KeyboardInterrupt:
             pass
         finally:

@@ -7,13 +7,13 @@ python3.11 -m venv model/.venv
 model/.venv/bin/python -m pip install -r model/requirements.txt
 ```
 
-Start the [Ryu](../ryu_controller/README.md) and [Mininet](../mininet_nets/README.md) projects with the same scenario first. Set `MININET_SOCKET` to the socket emitted by the Mininet launcher.
+Start the [Ryu](../ryu_controller/README.md) and [Mininet](../mininet_nets/README.md) projects with the same scenario first.
 
 ```sh
-model/.venv/bin/python -m model.train --mininet-socket "$MININET_SOCKET" \
+model/.venv/bin/python -m model.train --mininet-socket "$(cat mininet_nets/.socket)" \
   --traffic synthetic --episodes 3 --output runs/train-v0
 
-model/.venv/bin/python -m model.evaluate --mininet-socket "$MININET_SOCKET" \
+model/.venv/bin/python -m model.evaluate --mininet-socket "$(cat mininet_nets/.socket)" \
   --traffic synthetic --checkpoint runs/train-v0/checkpoint.pth --output runs/eval-v0
 ```
 
