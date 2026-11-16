@@ -1,7 +1,5 @@
 """Run and stop the scenario's Ryu processes using the local Python 3.7 venv."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -11,14 +9,13 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from types import FrameType
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ControllerSupervisor:
-    def __init__(self, scenario_path: Path, selected: list[str] | None) -> None:
+    def __init__(self, scenario_path: Path, selected: Optional[List[str]]) -> None:
         self.scenario_path = scenario_path.resolve()
         scenario = json.loads(self.scenario_path.read_text())
         if scenario.get("schema_version") != 1:
@@ -43,7 +40,7 @@ class ControllerSupervisor:
             EAGLE_SCENARIO=str(self.scenario_path),
             EAGLE_CONTROLLER_ID=controller_id,
         )
-        self.processes[controller_id] = subprocess.Popen(
+        self.processes[controller_id] = subprocess.Popen(  # noqa: S603
             [
                 sys.executable,
                 "-c",
@@ -74,7 +71,7 @@ class ControllerSupervisor:
             process.kill()
             process.wait()
 
-    def command(self, command: dict[str, Any]) -> dict[str, dict[str, int | None]]:
+    def command(self, command: Dict[str, Any]) -> Dict[str, Optional[Dict[str, int]]]:
         operation = command.get("operation")
         if operation == "restore":
             for controller_id in self.controllers:
@@ -99,14 +96,14 @@ class SupervisorRequest(socketserver.StreamRequestHandler):
         try:
             command = json.loads(self.rfile.readline(8192))
             if not isinstance(command, dict):
-                raise ValueError("Expected a JSON object")
+                raise TypeError("Expected a JSON object")  # noqa: TRY301
             reply = {"result": self.server.supervisor.command(command)}
         except (KeyError, ValueError, OSError, TypeError) as error:
             reply = {"error": str(error)}
         self.wfile.write(json.dumps(reply).encode() + b"\n")
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", type=Path, default=ROOT / "scenarios/v0.json")
     parser.add_argument(
@@ -119,7 +116,7 @@ def main() -> None:
         parser.error("Launch from the controller's Python 3.7 virtual environment")
     supervisor = ControllerSupervisor(args.scenario, args.controller)
 
-    def stop_on_signal(signum: int, frame: FrameType | None) -> None:
+    def stop_on_signal(*_) -> None:
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop_on_signal)
@@ -140,4 +137,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

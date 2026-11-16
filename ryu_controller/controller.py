@@ -1,20 +1,20 @@
 """OpenFlow 1.3 routing, peer state exchange, and the EAGLE HTTP interface."""
 
-from __future__ import annotations
-
 import json
 import os
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any, Dict, Optional, Union
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.base import app_manager
 from ryu.controller import ofp_event
+from ryu.controller.controller import Datapath
 from ryu.controller.handler import DEAD_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.lib import hub
 from ryu.ofproto import ofproto_v1_3
+from ryu.ofproto.ofproto_v1_3_parser import OFPPort
 from webob import Request, Response
 
 from ryu_controller.openflow_rules import (
@@ -26,18 +26,14 @@ from ryu_controller.routing import plan_forwarding_rules
 from ryu_controller.telemetry import Telemetry, compute_link_utilization
 from ryu_controller.topology_state import TopologyState, load_scenario
 
-if TYPE_CHECKING:
-    from ryu.controller.controller import Datapath
-    from ryu.ofproto.ofproto_v1_3_parser import OFPPort
-
-    from .routing import ForwardingRules
+from .routing import ForwardingRules
 
 
 class EagleController(app_manager.RyuApp):
-    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    _CONTEXTS = {"wsgi": WSGIApplication}
+    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]  # noqa: RUF012
+    _CONTEXTS = {"wsgi": WSGIApplication}  # noqa: RUF012
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.scenario = load_scenario(os.environ["EAGLE_SCENARIO"])
         self.controller_id = os.environ["EAGLE_CONTROLLER_ID"]
@@ -152,9 +148,12 @@ class EagleController(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPErrorMsg, MAIN_DISPATCHER)
     def on_openflow_error(self, event: ofp_event.EventOFPErrorMsg) -> None:
         message = event.msg
-        switch = self.switch_for_dpid.get(message.datapath.id)
+        switch: str = self.switch_for_dpid.get(message.datapath.id)
         self.logger.warning(
-            "OpenFlow error on %s: type=%s code=%s", switch, message.type, message.code
+            "OpenFlow error on %s: type=%s code=%s",
+            switch,
+            message.type,
+            message.code,
         )
         with self.lock:
             if self.datapaths.get(switch) is message.datapath and (
@@ -167,12 +166,14 @@ class EagleController(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def on_stats(
         self,
-        event: ofp_event.EventOFPPortStatsReply | ofp_event.EventOFPFlowStatsReply,
+        event: Union[
+            ofp_event.EventOFPPortStatsReply, ofp_event.EventOFPFlowStatsReply
+        ],
     ) -> None:
         with self.lock:
             self.telemetry.receive(event.msg)
 
-    def presence(self) -> dict[str, Any]:
+    def presence(self) -> Dict[str, Any]:
         return {
             "schema_version": 1,
             "scenario": self.scenario.fingerprint,
@@ -285,16 +286,17 @@ class EagleController(app_manager.RyuApp):
             self.telemetry.request_round(desired_datapaths, self.generation)
             if not desired_datapaths:
                 # An elected controller with no present switches publishes an empty window.
-                self.telemetry._publish(self.telemetry.pending)
+                self.telemetry._publish(self.telemetry.pending)  # noqa: SLF001
                 self.telemetry.pending = None
             self.next_poll = max(
-                now, self.next_poll + self.scenario.telemetry["poll_seconds"]
+                now,
+                self.next_poll + self.scenario.telemetry["poll_seconds"],
             )
 
     def _dispatch_rules(
         self,
-        datapaths: dict[str, Datapath],
-        rules: dict[str, ForwardingRules],
+        datapaths: Dict[str, Datapath],
+        rules: Dict[str, ForwardingRules],
         now: float,
     ) -> None:
         started = time.monotonic()
@@ -317,7 +319,7 @@ class EagleController(app_manager.RyuApp):
             "dispatched_at": time.time(),
         }
 
-    def stats(self, slot: str, view: str) -> dict[str, Any] | None:
+    def stats(self, slot: str, view: str) -> Optional[Dict[str, Any]]:  # noqa: C901
         if (
             self.topology.owners.get(slot) != self.controller_id
             or self.telemetry.latest is None
@@ -433,7 +435,9 @@ def _port_is_up(datapath: Datapath, port: OFPPort) -> bool:
 
 def _response(data: object, status: int = 200) -> Response:
     return Response(
-        status=status, content_type="application/json", body=json.dumps(data).encode()
+        status=status,
+        content_type="application/json",
+        body=json.dumps(data).encode(),
     )
 
 
@@ -442,19 +446,19 @@ class EagleApi(ControllerBase):
         self,
         request: Request,
         link: Any,
-        data: dict[str, EagleController],
-        **config: Any,
+        data: Dict[str, EagleController],
+        **config,
     ) -> None:
         super().__init__(request, link, data, **config)
         self.app = data["app"]
 
     @route("eagle", "/network/state", methods=["GET"])
-    def get_state(self, request: Request, **kwargs: Any) -> Response:
+    def get_state(self, **_) -> Response:
         with self.app.lock:
             return _response(self.app.presence())
 
     @route("eagle", "/network/stats", methods=["GET"])
-    def get_stats(self, request: Request, **kwargs: Any) -> Response:
+    def get_stats(self, request: Request, **_) -> Response:
         slot = request.GET.get("controller_id", self.app.controller_id)
         view = request.GET.get("view", "configured")
         if slot not in self.app.scenario.controllers or view not in (
@@ -462,7 +466,8 @@ class EagleApi(ControllerBase):
             "active",
         ):
             return _response(
-                {"error": "Unknown controller slot or observation view"}, 400
+                {"error": "Unknown controller slot or observation view"},
+                400,
             )
         with self.app.lock:
             snapshot = self.app.stats(slot, view)
@@ -478,7 +483,7 @@ class EagleApi(ControllerBase):
             return _response(snapshot)
 
     @route("eagle", "/model/actions", methods=["PUT"])
-    def put_actions(self, request: Request, **kwargs: Any) -> Response:
+    def put_actions(self, request: Request, **_) -> Response:
         slot = request.GET.get("controller_id", self.app.controller_id)
         if (
             request.GET.get("scenario", self.app.scenario.fingerprint)
@@ -530,6 +535,6 @@ class EagleApi(ControllerBase):
                         "revision": update["revision"],
                         "accepted_at": accepted_at,
                         "changed": current != update,
-                    }
+                    },
                 )
             )

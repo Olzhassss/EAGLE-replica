@@ -1,17 +1,14 @@
 """OpenFlow counter samples, coherent poll windows, and rate conversion."""
 
-from __future__ import annotations
-
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any, Dict, Union
+
+from ryu.controller.controller import Datapath
+from ryu.ofproto.ofproto_v1_3_parser import OFPFlowStatsReply, OFPPortStatsReply
 
 from ryu_controller.openflow_rules import COOKIE, COOKIE_MASK, TABLE_ID
 
 from .topology_state import Scenario
-
-if TYPE_CHECKING:
-    from ryu.controller.controller import Datapath
-    from ryu.ofproto.ofproto_v1_3_parser import OFPFlowStatsReply, OFPPortStatsReply
 
 
 class Telemetry:
@@ -30,7 +27,7 @@ class Telemetry:
     def reset(self) -> None:
         self.pending = self.previous = self.latest = None
 
-    def request_round(self, datapaths: dict[str, Datapath], generation: int) -> None:
+    def request_round(self, datapaths: Dict[str, Datapath], generation: int) -> None:
         started = time.time()
         self.pending = {
             "started_at": started,
@@ -66,7 +63,7 @@ class Telemetry:
         for _, _, request in commands:
             request.datapath.send_msg(request)
 
-    def receive(self, message: OFPFlowStatsReply | OFPPortStatsReply) -> None:
+    def receive(self, message: Union[OFPFlowStatsReply, OFPPortStatsReply]) -> None:
         poll = self.pending
         key = (message.datapath, message.xid)
         if poll is None or key not in poll["requests"]:
@@ -102,7 +99,7 @@ class Telemetry:
             self.pending = None
             self._publish(poll)
 
-    def _publish(self, current: dict[str, Any]) -> None:
+    def _publish(self, current: Dict[str, Any]) -> None:
         previous = self.previous
         self.previous = current
         if previous is None or previous["generation"] != current["generation"]:

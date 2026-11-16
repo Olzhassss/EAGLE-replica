@@ -1,13 +1,10 @@
 """Translate EAGLE's forwarding plan into OpenFlow 1.3 messages."""
 
-from __future__ import annotations
+from typing import Optional
 
-from typing import TYPE_CHECKING
+from ryu.controller.controller import Datapath
 
-if TYPE_CHECKING:
-    from ryu.controller.controller import Datapath
-
-    from .routing import ForwardingRules
+from .routing import ForwardingRules
 
 COOKIE = 0x4541474C45
 COOKIE_MASK = (1 << 64) - 1
@@ -35,7 +32,7 @@ def request_slave(datapath: Datapath, generation_id: int) -> None:
 
 def apply_forwarding_rules(
     datapath: Datapath,
-    previous: ForwardingRules | None,
+    previous: Optional[ForwardingRules],
     desired: ForwardingRules,
 ) -> None:
     """Send changed rules only. A new owner rebuilds EAGLE's table entries."""

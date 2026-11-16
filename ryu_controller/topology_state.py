@@ -1,15 +1,12 @@
 """Resolve logical agent slots and forwarding state from a versioned scenario."""
 
-from __future__ import annotations
-
 import hashlib
 import ipaddress
 import json
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Iterable, List, Tuple, Union
 
 import networkx as nx
 
@@ -25,7 +22,7 @@ class Scenario:
     telemetry: dict
 
 
-def _by_id(rows: Iterable[dict[str, Any]], label: str) -> dict[str, dict[str, Any]]:
+def _by_id(rows: Iterable[Dict[str, Any]], label: str) -> Dict[str, Dict[str, Any]]:
     indexed = {}
     for row in rows:
         id_ = row["id"]
@@ -35,7 +32,7 @@ def _by_id(rows: Iterable[dict[str, Any]], label: str) -> dict[str, dict[str, An
     return indexed
 
 
-def load_scenario(path: str | Path) -> Scenario:
+def load_scenario(path: Union[str, Path]) -> Scenario:
     """Load an undirected switch/host graph and its endpoint port index."""
     raw = Path(path).read_bytes()
     data = json.loads(raw)
@@ -46,7 +43,7 @@ def load_scenario(path: str | Path) -> Scenario:
     hosts = _by_id(data["hosts"], "host")
     if not controllers or not switches or hosts.keys() & switches.keys():
         raise ValueError(
-            "The scenario needs controllers and disjoint switch and host IDs"
+            "The scenario needs controllers and disjoint switch and host IDs",
         )
     dpids = set()
     for switch in switches.values():
@@ -70,7 +67,7 @@ def load_scenario(path: str | Path) -> Scenario:
         for key in ("http_port", "openflow_port"):
             port = item[key]
             address = (item["host"], port)
-            if type(port) is not int or not 0 < port < 65536 or address in restrictions:
+            if type(port) is not int or not 0 < port < 65536 or address in restrictions:  # noqa: PLR2004
                 raise ValueError(f"Invalid or duplicate endpoint {address!r}")
             restrictions.add(address)
 
@@ -93,7 +90,7 @@ def load_scenario(path: str | Path) -> Scenario:
             raise ValueError(f"Invalid link endpoints: {source} to {target}")
         if graph.has_edge(source, target) or type(capacity) is not int or capacity <= 0:
             raise ValueError(
-                f"Duplicate link or invalid link capacity: {source} to {target}"
+                f"Duplicate link or invalid link capacity: {source} to {target}",
             )
         endpoints = {source: link["source_port"], target: link["target_port"]}
         for node, neighbor in ((source, target), (target, source)):
@@ -136,7 +133,7 @@ class TopologyState:
         self.owners = {}
         self.connected = set()
 
-    def merge_resources(self, presence: dict[str, dict[str, Any]]) -> None:
+    def merge_resources(self, presence: Dict[str, Dict[str, Any]]) -> None:
         """Accept the latest acknowledged action for each logical controller slot."""
         for slot, update in presence.items():
             current = self.resources.get(slot)
@@ -151,14 +148,14 @@ class TopologyState:
         self,
         slot: str,
         action: int,
-        revision: list[int | str],
-    ) -> dict[str, Any]:
+        revision: List[Union[int, str]],
+    ) -> Dict[str, Any]:
         current = self.resources[slot]
         if current["action"] != action:
             self.resources[slot] = {"action": action, "revision": revision}
         return self.resources[slot]
 
-    def update_presence(self, frames: dict[str, dict[str, Any]]) -> None:
+    def update_presence(self, frames: Dict[str, Dict[str, Any]]) -> None:
         """Elect physical controllers and rebuild the forwarding graph.
 
         All switches connect to each configured controller. A live primary keeps
@@ -183,7 +180,7 @@ class TopologyState:
         }
         active_switches = self.connected - disabled
         self.active = self.configured.subgraph(
-            active_switches | self.scenario.hosts.keys()
+            active_switches | self.scenario.hosts.keys(),
         ).copy()
         for source, target, edge in list(self.active.edges(data=True)):
             endpoints = ((source, target), (target, source))
@@ -217,7 +214,7 @@ class TopologyState:
                 observed.add_edge(source, target, **edge)
         return observed
 
-    def resource_usage(self, slot: str) -> tuple[int, int]:
+    def resource_usage(self, slot: str) -> Tuple[int, int]:
         """Count active local switches and ports for modeled power."""
         switches = [
             node
