@@ -37,6 +37,6 @@ def plan_forwarding_rules(
             pair = (graph.nodes[source]["mac"], graph.nodes[target]["mac"])
             key = (source + target + "".join(pair)).encode()
             path = paths[crc32c.crc32c(key) % len(paths)]
-            for switch, next_hop in zip(path[1:-1], path[2:], strict=True):  # noqa: RUF007
+            for switch, next_hop in zip(path[1:-1], path[2:]):  # noqa: B905, RUF007
                 rules[switch][pair] = graph[switch][next_hop]["ports"][switch]
     return rules
