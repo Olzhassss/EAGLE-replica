@@ -7,3 +7,8 @@ __pycache__/
 *.gz
 *.7z
 .socket
+*.pcapng
+datasets/*
+!datasets/.gitkeep
+networks/*
+!networks/.gitkeep

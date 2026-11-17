@@ -4,8 +4,8 @@ import unittest
 
 import networkx as nx
 
-from partitioning.balanced_louvain import balanced_partitions
-from partitioning.placement import place_controllers
+from network_preparation.balanced_louvain import balanced_partitions
+from network_preparation.placement import place_controllers
 
 
 class PlacementTests(unittest.TestCase):

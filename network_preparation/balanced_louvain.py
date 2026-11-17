@@ -1,7 +1,5 @@
 """Partition weighted, undirected switch graphs subject to controller capacity."""
 
-from __future__ import annotations
-
 import math
 import random
 from collections import defaultdict
@@ -19,7 +17,7 @@ def balanced_partitions(
     resolution: float,
     seed: int,
     weight: str = "weight",
-) -> Iterator[list[set[str]]]:
+) -> Iterator[list[set[int | str]]]:
     """Yield disjoint sets of original node IDs at each aggregation level.
 
     A move must leave the destination within capacity. Subtract rho from its
@@ -54,6 +52,51 @@ def balanced_partitions(
         if len(communities) == len(network) or len(communities) < 2:
             return
         network = _contract(network, communities)
+
+
+def partition_domains(
+    graph: nx.Graph,
+    domains: int,
+    *,
+    capacity: int,
+    difference: int,
+    rho: float,
+    resolution: float,
+    seed: int,
+    weight: str,
+) -> tuple[list[set[int]], list[set[int]]]:
+    """Return the connected groups before merging and the final domains."""
+    groups = [{node} for node in graph]
+    for level in balanced_partitions(
+        graph,
+        capacity=capacity,
+        difference=difference,
+        rho=rho,
+        resolution=resolution,
+        seed=seed,
+        weight=weight,
+    ):
+        if len(level) < domains:
+            break
+        groups = level
+    groups = [
+        component
+        for group in groups
+        for component in nx.connected_components(graph.subgraph(group))
+    ]
+    if len(groups) == domains:
+        return groups, groups
+
+    # Merge whole connected groups on the quotient to reach the requested count.
+    quotient = _contract(graph, groups, weight)
+    merged = nx.community.greedy_modularity_communities(
+        quotient,
+        weight="weight",
+        resolution=resolution,
+        cutoff=domains,
+        best_n=domains,
+    )
+    return groups, [set().union(*(groups[index] for index in group)) for group in merged]
 
 
 def _move_nodes(
@@ -113,16 +156,20 @@ def _move_nodes(
             return [group for group in groups if group]
 
 
-def _contract(graph: nx.Graph, groups: list[set[str | int]]) -> nx.Graph:
+def _contract(
+    graph: nx.Graph, groups: list[set[int | str]], weight: str = "weight"
+) -> nx.Graph:
     parent = {node: index for index, group in enumerate(groups) for node in group}
     coarse = nx.Graph()
     for index, group in enumerate(groups):
         coarse.add_node(
             index,
-            members=set().union(*(graph.nodes[node]["members"] for node in group)),
+            members=set().union(
+                *(graph.nodes[node].get("members", {node}) for node in group)
+            ),
         )
     for source, target, edge in graph.edges(data=True):
         a, b = parent[source], parent[target]
         accumulated = coarse.get_edge_data(a, b, {}).get("weight", 0)
-        coarse.add_edge(a, b, weight=accumulated + edge["weight"])
+        coarse.add_edge(a, b, weight=accumulated + edge[weight])
     return coarse
