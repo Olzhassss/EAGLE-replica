@@ -1,33 +1,20 @@
 {
-  "profile": "study-oriented-example",
   "decision_seconds": 5,
-  "episode_steps": 8,
   "warmup_seconds": 0,
-  "embedding": {
-    "order": 1,
-    "eval_points": 1,
-    "normalization": "source"
-  },
+  "drain_seconds": 5,
+  "sample_timeout_seconds": 15,
+  "embedding": {"order": 1, "eval_points": 1, "normalization": "source"},
   "reward": {
     "alpha": 0.5,
     "throughput_reference_bps": 8000000,
     "power_reference_watts": 200,
-    "power_model": {
-      "idle_switch_watts": 30,
-      "idle_port_watts": 1,
-      "dynamic_watts_per_mbps": 0.05
-    }
+    "power_model": {"idle_switch_watts": 30, "idle_port_watts": 1, "dynamic_watts_per_mbps": 0.05}
   },
+  "training": {"episodes": 30, "pretrain_episodes": 5, "calibration_episodes": 1},
   "learning": {
-    "actor_lr": 0.0001,
-    "critic_lr": 0.001,
-    "estimator_lr": 0.001,
+    "actor_lr": 0.0001, "critic_lr": 0.001, "estimator_lr": 0.001,
     "batch_size": 8,
-    "pruning": {
-      "mode": "dynamic",
-      "warmup_rounds": 5,
-      "ramp_rounds": 20
-    }
+    "pruning": {"mode": "dynamic", "warmup_rounds": 5, "ramp_rounds": 20}
   },
-  "provenance": "Runnable example using the study method. Episode length, warm-up, power coefficients, reward references, batch size and pruning ramp are local example values. The default run uses one online stage with CLI-selected traffic and episode count."
+  "evaluation": {"episodes": 5, "repetitions": 10}
 }

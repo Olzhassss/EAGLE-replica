@@ -75,12 +75,15 @@ class DatasetTests(unittest.TestCase):
             _capture(dc, [(second + 0.125, frame) for second in range(81)])
             _capture(mg, [(second + 0.125, frame) for second in range(7)])
             output = root / "3_hosts"
-            prepare_datasets(dc, mg, output, 3, 12, 42, None)
+            prepare_datasets(dc, mg, output, 3, 20, 42, decision_seconds=5)
             train, test = output / "train", output / "test"
             self.assertFalse((train / "mg_t0.json").exists())
 
             dc_train = _read(train / "dc_t0.json")
             dc_test = _read(test / "dc_t0.json")
+            self.assertEqual(dc_test["duration_seconds"], 100)
+            self.assertEqual(dc_test["decisions"], 20)
+            self.assertEqual(len(dc_test["hosts"]), 3)
             train_seconds, test_seconds = (
                 {w["capture_second"] for row in profile["series"] for w in row["windows"]}
                 for profile in (dc_train, dc_test)
@@ -94,7 +97,7 @@ class DatasetTests(unittest.TestCase):
             entry = _read(test / "dc_pcap.json")["captures"][0]
             records = list(capture_packets(test / entry["path"]))
             self.assertEqual([stamp for stamp, _, _ in records], [
-                second * SECOND + SECOND // 8 for second in range(12)
+                second * SECOND + SECOND // 8 for second in range(100)
             ])
             rewritten = records[0][2]
             self.assertEqual(rewritten[:12], target.mac + source.mac)

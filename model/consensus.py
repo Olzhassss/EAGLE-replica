@@ -10,7 +10,7 @@ import torch
 
 def pruning_fraction(config: Mapping[str, Any], round_number: int) -> float:
     mode = config["mode"]
-    if mode == "dense":
+    if mode in ("none", "dense"):
         return 0.0
     if mode == "static":
         return 0.7

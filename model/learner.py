@@ -93,21 +93,18 @@ class AgentLearner:
             device=self.device,
         )
         estimator_input = torch.cat((states, actions.float()), dim=-1)
-        self.estimator.train(mode != "frozen")
-        if mode == "frozen":
-            with torch.no_grad():
-                estimate = self.estimator(estimator_input).squeeze(-1)
-        else:
-            estimate = self.estimator(estimator_input).squeeze(-1)
-        predicted_reward = estimate.detach()
         metrics = {}
-        if mode in ("pretrain", "online"):
+        if mode == "pretrain":
+            self.estimator.train()
+            estimate = self.estimator(estimator_input).squeeze(-1)
             metrics["estimator_loss"] = self._optimize(
                 "estimator",
                 F.mse_loss(estimate, rewards),
             )
-        if mode == "pretrain":
             return metrics
+        self.estimator.eval()
+        with torch.no_grad():
+            predicted_reward = self.estimator(estimator_input).squeeze(-1)
         value = self.critic(states).squeeze(-1)
         with torch.no_grad():
             future = bootstrap * self.critic(next_states).squeeze(-1)
@@ -134,9 +131,7 @@ class AgentLearner:
     def _shared_components(self, mode: str) -> dict[str, torch.nn.Module]:
         if mode == "pretrain":
             return {"estimator": self.estimator}
-        if mode == "frozen":
-            return {"critic": self.critic}
-        return {"critic": self.critic, "estimator": self.estimator}
+        return {"critic": self.critic}
 
     def contribution(self, mode: str, round_number: int, fraction: float) -> bytes:
         return pack_contribution(

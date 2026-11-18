@@ -1,6 +1,5 @@
 """Run learners locally or in one spawned process per logical controller."""
 
-import math
 import multiprocessing
 import pickle
 import time
@@ -155,57 +154,24 @@ class AgentPool(AbstractContextManager):
         round_number: int,
         mode: str,
         batch: dict[str, list[Any]],
-        active_agents: Sequence[str] | None = None,
     ) -> dict[str, Any]:
-        if active_agents is None:
-            participants = self.slots
-        else:
-            if (
-                not active_agents
-                or set(active_agents) - set(self.slots)
-                or len(set(active_agents)) != len(active_agents)
-            ):
-                raise ValueError(
-                    "Active learning agents must be distinct scenario slots",
-                )
-            participants = tuple(slot for slot in self.slots if slot in active_agents)
-        rows = self.settings.get("mixing_weights", {})
-        mixing = {
-            slot: _weights_for(slot, participants, rows.get(slot))
-            for slot in participants
-        }
-        metrics = self.dispatch("learn", dict.fromkeys(participants, (mode, batch)))
+        metrics = self.dispatch("learn", dict.fromkeys(self.slots, (mode, batch)))
         fraction = pruning_fraction(self.settings["pruning"], round_number)
-        needed = {
-            peer
-            for slot, row in mixing.items()
-            for peer, weight in row.items()
-            if peer != slot and weight
-        }
         parameters = self.dispatch(
-            "contribution",
-            {
-                slot: (mode, round_number, fraction)
-                for slot in participants
-                if slot in needed
-            },
+            "contribution", dict.fromkeys(self.slots, (mode, round_number, fraction))
         )
-        mixed_args = {}
-        payload_bytes = 0
-        for slot, row in mixing.items():
-            peers = [
-                (weight, parameters[peer])
-                for peer, weight in row.items()
-                if peer != slot and weight
-            ]
-            payload_bytes += sum(len(packet) for _, packet in peers)
-            mixed_args[slot] = (mode, round_number, row.get(slot, 0.0), peers)
-        self.dispatch("mix", mixed_args)
+        weight = 1 / len(self.slots)
+        arguments = {
+            slot: (mode, round_number, weight,
+                   [(weight, parameters[peer]) for peer in self.slots if peer != slot])
+            for slot in self.slots
+        }
+        self.dispatch("mix", arguments)
         return {
             "agents": metrics,
             "pruned_fraction": fraction,
             "round": round_number,
-            "peer_parameter_bytes": payload_bytes,
+            "peer_parameter_bytes": (len(self.slots) - 1) * sum(map(len, parameters.values())),
         }
 
     def state_dict(self) -> dict[str, Any]:
@@ -239,22 +205,3 @@ class AgentPool(AbstractContextManager):
         trace: TracebackType | None,
     ) -> None:
         self.close(abort=exc_type is not None)
-
-
-def _weights_for(
-    slot: str,
-    participants: tuple[str, ...],
-    configured: dict[str, float] | None,
-) -> dict[str, float]:
-    if configured is None:
-        return {name: 1 / len(participants) for name in participants}
-    if any(
-        type(weight) not in (int, float) or not math.isfinite(weight) or weight < 0
-        for weight in configured.values()
-    ):
-        raise ValueError("Invalid consensus weights for " + slot)
-    row = {name: configured.get(name, 0) for name in participants}
-    total = sum(row.values())
-    if not total:
-        raise ValueError("No positive consensus weight among active agents for " + slot)
-    return {name: weight / total for name, weight in row.items()}

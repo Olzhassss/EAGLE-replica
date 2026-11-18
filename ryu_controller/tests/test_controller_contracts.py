@@ -22,7 +22,7 @@ from ryu_controller.routing import plan_forwarding_rules
 from ryu_controller.telemetry import Telemetry, compute_link_utilization, counter_delta
 from ryu_controller.topology_state import TopologyState, load_scenario
 
-SOURCE = Path(__file__).resolve().parents[2] / "scenarios/v0.json"
+SOURCE = Path(__file__).resolve().parents[2] / "network_preparation/source_v0.json"
 
 
 class ControllerContracts(unittest.TestCase):

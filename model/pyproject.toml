@@ -1,12 +1,14 @@
 [project]
 name = "EAGLE-replica"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "EAGLE multi-agent SDN training and evaluation"
+readme = "../README.md"
 requires-python = ">=3.13"
 authors = [{ name = "Olzhas T", email = "52438129+Olzhassss@users.noreply.github.com" }]
 dependencies = [
   "gymnasium>=0.29,<2",
+  "ipykernel>=7.4.0",
+  "jupyterlab>=4.6.6",
   "matplotlib>=3.8,<4",
   "networkx>=3.2,<4",
   "numpy>=1.26,<3",

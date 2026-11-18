@@ -3,6 +3,9 @@ AGENTS.md
 __pycache__/
 *.pth.tar
 /runs/
+/models/
+/eval/
+.ipynb_checkpoints/
 *.pdf
 *.gz
 *.7z

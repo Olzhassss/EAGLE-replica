@@ -15,6 +15,7 @@ from .controller_client import (
     JointActionError,
 )
 from .emulation import Emulation
+from .datasets import Dataset
 from .observations import ObservationEncoder
 from .reward import compute_reward
 from .scenario import Scenario
@@ -109,35 +110,27 @@ class JointEnvironment:
     def _apply(
         self,
         actions: Sequence[int] | NDArray,
-    ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         mapped = dict(zip(self.slots, map(int, actions), strict=True))
         acknowledgments = self.client.apply_actions(
             mapped, time.monotonic() + self.sample_timeout
         )
-        try:
-            physical = self.emulation.apply_resources(
-                mapped, self.settings["resource_mode"]
-            )
-        except (OSError, ValueError, RuntimeError) as error:
-            raise JointActionError(
-                acknowledgments, {"physical resources": str(error)}
-            ) from error
-        return acknowledgments, physical
+        return acknowledgments
 
-    def reset(self, traffic_profile: str) -> tuple[dict[str, NDArray], dict[str, Any]]:
-        """Restore hardware, initial action and statistics before starting a trial."""
+    def reset(
+        self, dataset: Dataset, *, measure_flows: bool = True,
+    ) -> tuple[dict[str, NDArray], dict[str, Any]]:
+        """Restore forwarding and start the prepared traffic schedule."""
         self.steps = 0
         self.snapshots = None
-        self.emulation.reset(
-            self.scenario.fingerprint, self.settings["resource_mode"], traffic_profile
-        )
-        actions, physical = self._apply(self.scenario.initial_actions)
-        after = max(
-            [physical.get("applied_at", 0)]
-            + [ack["accepted_at"] for ack in actions.values()]
-        )
+        self.settings = dict(self.settings, episode_steps=dataset.decisions(self.settings))
+        self.emulation.reset(self.scenario.fingerprint)
+        actions = self._apply([1] * len(self.slots))
+        after = max(ack["accepted_at"] for ack in actions.values())
         self._wait_for_samples(after, actions)
-        self.traffic = self.emulation.start_traffic(traffic_profile)
+        self.traffic = self.emulation.start_traffic(
+            dataset.jobs, dataset.duration, measure_flows=measure_flows,
+        )
         starts = (
             self.traffic.get("started_at", time.time())
             + self.settings["warmup_seconds"]
@@ -150,7 +143,6 @@ class JointEnvironment:
             "snapshots": self.snapshots,
             "traffic": self.traffic,
             "acks": actions,
-            "physical": physical,
         }
 
     def step(
@@ -164,16 +156,8 @@ class JointEnvironment:
         ):
             raise ValueError("Expected one integer binary action per controller")
         started = time.monotonic()
-        faults = [
-            {"event": event, "result": self.emulation.fault(event)}
-            for event in self.settings["failures"]
-            if event["step"] == self.steps
-        ]
-        acknowledgments, physical = self._apply(actions)
-        after = max(
-            [physical.get("applied_at", 0)]
-            + [ack["accepted_at"] for ack in acknowledgments.values()]
-        )
+        acknowledgments = self._apply(actions)
+        after = max(ack["accepted_at"] for ack in acknowledgments.values())
         time.sleep(
             max(0.0, self.settings["decision_seconds"] - (time.monotonic() - started))
         )
@@ -196,9 +180,7 @@ class JointEnvironment:
                 "raw_embedding": raw,
                 "snapshots": self.snapshots,
                 "acks": acknowledgments,
-                "physical": physical,
                 "reward_components": parts,
-                "faults": faults,
                 "step_seconds": time.monotonic() - started,
             },
         )

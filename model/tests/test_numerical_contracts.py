@@ -13,7 +13,9 @@ from model.consensus import mix_contributions, pack_contribution, pruning_fracti
 from model.emulation import Emulation
 from model.observations import ObservationEncoder, embed_subnet
 from model.reward import compute_reward
-from model.scenario import DEFAULT_SCENARIO, load_scenario
+from model.scenario import ROOT, load_scenario
+
+SOURCE = ROOT / "network_preparation/source_v0.json"
 
 
 class NumericalContracts(unittest.TestCase):
@@ -105,7 +107,7 @@ class NumericalContracts(unittest.TestCase):
         self.assertAlmostEqual(pruning_fraction(rates, 16), 0.7)
 
     def test_native_checkpoint_round_trip(self) -> None:
-        scenario = load_scenario(DEFAULT_SCENARIO)
+        scenario = load_scenario(SOURCE)
         encoder = ObservationEncoder(scenario.controller_ids, 1, 1)
         source = ActorCritic(encoder.size, len(encoder.controller_ids))
         obs = {"global_obs": np.ones(encoder.size, dtype=np.float32)}
@@ -134,7 +136,7 @@ class NumericalContracts(unittest.TestCase):
         np.testing.assert_array_equal(restored.decide(obs), source.decide(obs))
 
     def test_rejects_checkpoint_without_agent_state(self) -> None:
-        scenario = load_scenario(DEFAULT_SCENARIO)
+        scenario = load_scenario(SOURCE)
         with tempfile.TemporaryDirectory() as directory:
             checkpoint = Path(directory) / "incomplete.pth"
             save_checkpoint(checkpoint, {"encoder": {}})

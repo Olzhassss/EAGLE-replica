@@ -1,259 +1,180 @@
-"""Train EAGLE over a scenario curriculum and save resumable CPU checkpoints."""
-# ruff: noqa: B023
+"""Train named EAGLE models on prepared traffic and save resumable state."""
 
 import argparse
+import fcntl
 import time
-from collections.abc import Iterable, Iterator
-from pathlib import Path
-from typing import Any
 
+from .artifacts import MODELS, save_rewards
 from .checkpoints import load_checkpoint, save_checkpoint
-from .cli import add_trial_arguments, parse_trial_inputs, resolve_device
-from .controller_client import ControllerClient
-from .emulation import Emulation
-from .joint_environment import JointEnvironment
+from .cli import add_runtime_arguments, artifact_name, load_network, resolve_device
+from .datasets import load_dataset
+from .evaluate import make_environment, seed_everything
 from .observations import ObservationEncoder, make_encoder
-from .run_log import RunLog, read_calibration, read_events
-from .scenario import Scenario
-from .settings import training_stages
+from .run_log import RunLog
+from .settings import load_settings, training_stages
 from .trials import run_trial
 from .workers import AgentPool
 
 
-def _batches(
-    rows: Iterable[dict[str, Any]],
-    size: int,
-) -> Iterator[list[dict[str, Any]]]:
-    batch = []
-    for row in rows:
-        batch.append(row)
-        if len(batch) >= size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
+def train(args: argparse.Namespace) -> None:
+    directory = MODELS / "checkpoints"
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / f"{args.output}.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError(f"Training {args.output} is already running") from error
+        _train(args)
 
 
-def _round_batch(rows: list[dict[str, Any]]) -> dict[str, list[Any]]:
-    fields = ("state", "action", "reward", "next_state", "terminated")
-    return {field: [row[field] for row in rows] for field in fields}
-
-
-def train(
-    args: argparse.Namespace,
-    scenario: Scenario,
-    settings: dict[str, Any],
-    stages: list[dict[str, Any]],
-    encoder: ObservationEncoder,
-    resume: dict[str, Any] | None,
-) -> None:
-    device = resolve_device(args.device)
-    log = RunLog(
-        args.output,
-        scenario,
-        settings,
-        method="EAGLE-training",
-        seed=args.seed,
-        encoder=encoder.to_dict(),
-        stages=stages,
-        worker_mode=args.workers,
-        device=str(device),
-        resume=str(args.resume) if args.resume else None,
-        calibration=str(args.normalize_from) if args.normalize_from else None,
-        replay=str(args.replay_from) if args.replay_from else None,
-        condition=scenario.data["id"],
-        expected_episodes=sum(item["episodes"] for item in stages),
+def _train(args: argparse.Namespace) -> None:
+    network = load_network(args.network)
+    settings = load_settings(args.settings)
+    if args.episodes is not None:
+        settings["training"]["episodes"] = args.episodes
+    if args.pretrain_episodes is not None:
+        settings["training"]["pretrain_episodes"] = args.pretrain_episodes
+    stages = training_stages(
+        args.traffic, settings["training"]["episodes"], settings["training"]["pretrain_episodes"],
     )
-    print(f"Training device: {device}", flush=True)
+    datasets = {
+        name: load_dataset(network, name, "train")
+        for stage in stages for name in stage["profiles"]
+    }
+    for dataset in datasets.values():
+        dataset.decisions(settings)
+    checkpoint_path = MODELS / "checkpoints" / f"{args.output}.pth"
+    run_directory = MODELS / "checkpoints" / f"{args.output}.run"
+    model_path = MODELS / args.output
+    identity = {
+        "settings": settings, "stages": stages, "seed": args.seed,
+        "scenario_sha256": network.fingerprint, "training_mode": args.traffic,
+        "datasets": {name: dataset.fingerprint for name, dataset in datasets.items()},
+    }
+    resume = load_checkpoint(checkpoint_path) if args.resume else None
+    if resume and any(resume.get(key) != value for key, value in identity.items()):
+        raise ValueError("Resume requires the same network, datasets, settings, seed, and training mode")
+    existing_outputs = (model_path, checkpoint_path, MODELS / f"{args.output}.csv")
+    if not args.resume and any(path.exists() for path in existing_outputs):
+        raise FileExistsError("Model name already exists. Use --resume or choose another name")
+    device = resolve_device(args.device)
+    seed_everything(args.seed)
+    print(f"Training {args.output} on {device}", flush=True)
+    encoder = ObservationEncoder(
+        network.controller_ids, settings["embedding"]["order"], settings["embedding"]["eval_points"],
+    )
+    if resume:
+        encoder = ObservationEncoder.from_dict(resume["encoder"])
+    elif settings["embedding"]["normalization"] == "source":
+        calibration = []
+        environment = make_environment(args, network, settings, encoder)
+        log = RunLog(run_directory / "calibration", network, settings, overwrite=True, seed=args.seed)
+        for dataset in datasets.values():
+            for episode in range(1, settings["training"]["calibration_episodes"] + 1):
+                result = run_trial(
+                    environment, lambda _: [1] * len(network.controller_ids), log,
+                    episode=episode, dataset=dataset, progress=f"Calibration {dataset.name}",
+                    measure_flows=False,
+                )
+                calibration.extend(result["embeddings"])
+        encoder = make_encoder(network, settings, calibration)
+    log = RunLog(
+        run_directory, network, settings, resume=bool(resume), overwrite=not bool(resume),
+        seed=args.seed, stages=stages, encoder=encoder.to_dict(),
+    )
+    rewards = list(resume["episode_rewards"]) if resume else []
+    completed = resume["completed_episodes"] if resume else 0
     round_number = resume["round"] if resume else 0
-    episode = 0
+    total = sum(stage["episodes"] for stage in stages)
+    started = time.monotonic()
     with AgentPool(
-        encoder,
-        settings["learning"],
-        args.seed,
-        distributed=args.workers == "process",
-        device=device,
+        encoder, settings["learning"], args.seed,
+        distributed=args.workers == "process", device=device,
     ) as agents:
         if resume:
             agents.load_state_dict(resume["agents"])
-        environment = JointEnvironment(
-            scenario,
-            settings,
-            ControllerClient(scenario),
-            Emulation(
-                args.mininet_socket,
-                args.ryu_socket,
-                discover=not args.replay_from
-                and any(stage["traffic"] != "external" for stage in stages),
-            ),
-            encoder,
-            encode_local=agents.embed,
-        )
+        environment = make_environment(args, network, settings, encoder)
+        environment.encode_local = agents.embed
+
+        def checkpoint(episode: int) -> None:
+            save_checkpoint(checkpoint_path, dict(
+                identity, encoder=encoder.to_dict(), agents=agents.state_dict(),
+                round=round_number, completed_episodes=episode, episode_rewards=rewards,
+            ))
+
+        checkpoint(completed)
+        episode = 0
         for stage in stages:
-            recorded = (
-                _offline_rows(args.replay_from, stage["traffic"], encoder)
-                if args.replay_from
-                else None
-            )
-            for _ in range(stage["episodes"]):
+            for stage_episode in range(stage["episodes"]):
                 episode += 1
-                if resume and episode <= resume["episode"]:
+                if episode <= completed:
                     continue
+                dataset = datasets[stage["profiles"][stage_episode % len(stage["profiles"])]]
                 batch = []
 
                 def update() -> None:
                     nonlocal round_number
                     round_number += 1
-                    before = agents.bytes_transferred
-                    started = time.monotonic()
-                    result = agents.run_round(
-                        round_number,
-                        stage["mode"],
-                        _round_batch(batch),
-                        stage.get("active_agents"),
-                    )
-                    log.write(
-                        "learning",
-                        episode=episode,
-                        stage=stage["name"],
-                        batch_size=len(batch),
-                        elapsed_seconds=time.monotonic() - started,
-                        worker_transport_bytes=agents.bytes_transferred - before,
-                        **result,
-                    )
+                    transitions = {
+                        field: [row[field] for row in batch]
+                        for field in ("state", "action", "reward", "next_state", "terminated")
+                    }
+                    metrics = agents.run_round(round_number, stage["mode"], transitions)
+                    log.write("learning", episode=episode, stage=stage["name"], **metrics)
                     batch.clear()
 
-                def collect(transition: dict[str, Any]) -> None:
+                def collect(transition: dict) -> None:
                     batch.append(transition)
                     if len(batch) == settings["learning"]["batch_size"]:
                         update()
 
-                if recorded is not None:
-                    log.write(
-                        "trial_start",
-                        episode=episode,
-                        traffic_profile=stage["traffic"],
-                        stage=stage["name"],
-                    )
-                    for transitions in _batches(recorded, settings["episode_steps"]):
-                        for row in transitions:
-                            collect(row)
-                        break
-                    else:
-                        raise ValueError(
-                            "Replay has no remaining transitions for "
-                            + stage["traffic"],
-                        )
-                    log.write("trial_end", episode=episode, offline=True)
-                else:
-                    run_trial(
-                        environment,
-                        lambda obs, _: agents.decide(obs),
-                        log,
-                        episode=episode,
-                        traffic=stage["traffic"],
-                        stage=stage["name"],
-                        on_transition=collect,
-                        keep_captures=args.keep_captures,
-                    )
+                result = run_trial(
+                    environment, agents.decide, log, episode=episode, dataset=dataset,
+                    on_transition=collect,
+                    measure_flows=False,
+                    progress=f"{stage['name']} episode {stage_episode + 1}/{stage['episodes']}",
+                )
                 if batch:
                     update()
-                save_checkpoint(
-                    args.output / "checkpoint.pth",
-                    {
-                        "encoder": encoder.to_dict(),
-                        "agents": agents.state_dict(),
-                        "seed": args.seed,
-                        "round": round_number,
-                        "episode": episode,
-                        "stage": stage["name"],
-                        "scenario_sha256": scenario.fingerprint,
-                        "settings": settings,
-                        "stages": stages,
-                    },
-                )
+                if stage["mode"] == "frozen":
+                    rewards.append(result["cumulative_reward"])
+                checkpoint(episode)
+                save_rewards(MODELS / f"{args.output}.csv", rewards, plot=False)
+                average_seconds = (time.monotonic() - started) / (episode - completed)
+                remaining = total - episode
                 print(
-                    "Saved checkpoint for episode {} ({})".format(
-                        episode,
-                        stage["name"],
-                    ),
+                    f"Episode {episode}/{total} | cumulative reward {result['cumulative_reward']:.6f} | "
+                    f"remaining {remaining} | ETA {remaining * average_seconds / 60:.1f} min",
                     flush=True,
                 )
+        state = agents.state_dict()
+        save_checkpoint(model_path, {
+            "schema_version": 1, "encoder": encoder.to_dict(), "settings": settings,
+            "agents": {
+                slot: {key: values[key] for key in ("actor", "critic")}
+                for slot, values in state.items()
+            },
+        })
+    save_rewards(MODELS / f"{args.output}.csv", rewards)
+    print(f"Saved {model_path}", flush=True)
 
 
-def _offline_rows(
-    file: Path,
-    traffic: str,
-    encoder: ObservationEncoder,
-) -> Iterator[dict[str, Any]]:
-    current = None
-    previous = None
-    for row in read_events(file):
-        if row["event"] == "trial_start":
-            current = row["traffic_profile"]
-            previous = None
-        elif row["event"] == "reset" and current == traffic:
-            previous = encoder.normalize(row["raw_embedding"]).tolist()
-        elif row["event"] == "transition" and current == traffic:
-            if previous is None:
-                raise ValueError(
-                    "Replay transition is missing its preceding observation",
-                )
-            observation = encoder.normalize(row["raw_embedding"]).tolist()
-            yield dict(row, state=previous, next_state=observation)
-            previous = observation
-
-
-def _main() -> None:
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    add_trial_arguments(parser)
-    parser.add_argument("--workers", choices=("process", "local"), default="process")
-    parser.add_argument(
-        "--normalize-from",
-        type=Path,
-        help="Source run events.jsonl with raw graph embeddings",
-    )
-    parser.add_argument(
-        "--replay-from",
-        type=Path,
-        help="Train from saved transitions without running Mininet or Ryu",
-    )
-    parser.add_argument("--resume", type=Path)
+    add_runtime_arguments(parser)
+    parser.add_argument("--network", required=True, help="Filename in networks/")
+    parser.add_argument("--traffic", choices=("pcaps", "synthetic", "curriculum"), required=True)
+    parser.add_argument("--output", type=artifact_name, required=True, help="Inference filename in models/")
+    parser.add_argument("--episodes", type=int)
+    parser.add_argument("--pretrain-episodes", type=int)
+    parser.add_argument("--resume", action="store_true", help="Resume this model's latest checkpoint")
+    parser.add_argument("--workers", choices=("local", "process"), default="process")
     args = parser.parse_args()
-    scenario, settings = parse_trial_inputs(parser, args)
-    traffic_profiles = set(scenario.data.get("traffic", {})) | {"idle", "external"}
     try:
-        stages = training_stages(
-            settings,
-            args.episodes,
-            args.traffic,
-            traffic_profiles,
-        )
-        resume = load_checkpoint(args.resume) if args.resume else None
-        if resume:
-            if (
-                resume["seed"] != args.seed
-                or resume["scenario_sha256"] != scenario.fingerprint
-                or resume["settings"] != settings
-                or resume["stages"] != stages
-            ):
-                raise ValueError(
-                    "Resume requires the original scenario, settings, schedule, and seed",
-                )
-            if args.replay_from:
-                raise ValueError(
-                    "Offline replay resumes require a new explicit input window",
-                )
-            encoder = ObservationEncoder.from_dict(resume["encoder"])
-        else:
-            calibration = (
-                read_calibration(args.normalize_from) if args.normalize_from else ()
-            )
-            encoder = make_encoder(scenario, settings, calibration)
-        train(args, scenario, settings, stages, encoder, resume)
-    except (ValueError, OSError, KeyError) as error:
+        train(args)
+    except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))
 
 
 if __name__ == "__main__":
-    _main()
+    main()

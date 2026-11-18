@@ -11,10 +11,32 @@ import networkx as nx
 
 from config import Config
 from network_preparation.placement import assign_hosts, select_controllable
-from network_preparation.prepare import build_scenario, load_switch_graph, random_switch_graph
+from network_preparation.prepare import SOURCE_TOPOLOGY, build_scenario, load_switch_graph, random_switch_graph, source_scenario
+from data_preparation.replay import hosts_for
+import json
 
 
 class PreparationTests(unittest.TestCase):
+    def test_documented_random_variants_have_enough_safe_host_slots(self) -> None:
+        for links in (16, 18):
+            scenario = build_scenario("fixture", random_switch_graph(13, links, 42), 9, "random")
+            self.assertEqual(len(scenario["hosts"]), 9)
+            self.assertEqual(len(scenario["controllers"]), 3)
+
+    def test_source_topologies_preserve_source_edges_and_use_dataset_addresses(self) -> None:
+        hosts = [host.to_dict() for host in hosts_for(9, None)]
+        source = json.loads(SOURCE_TOPOLOGY.read_text())
+        edges = lambda data: {frozenset((link["source"], link["target"])) for link in data["links"] if not link["target"].startswith("h")}
+        v0 = source_scenario("v0", hosts)
+        v3 = source_scenario("v3", hosts)
+        self.assertEqual(edges(v0), edges(source))
+        self.assertEqual((len(v0["switches"]), len(edges(v0))), (13, 16))
+        self.assertEqual((len(v3["switches"]), len(edges(v3))), (16, 22))
+        self.assertTrue(edges(v0) <= edges(v3))
+        self.assertEqual(v0["hosts"], hosts)
+        self.assertEqual(v3, source_scenario("v3", hosts))
+        self.assertEqual([row["support_switch"] for row in v3["controllers"]], ["s12", "s11", "s13"])
+
     def test_graphml_normalization(self) -> None:
         graph = nx.MultiDiGraph()
         graph.add_edges_from([("10", "2"), ("2", "10"), ("2", "3"), ("2", "2")])

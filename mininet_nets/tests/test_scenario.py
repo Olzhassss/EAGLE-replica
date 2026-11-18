@@ -6,7 +6,7 @@ from pathlib import Path
 
 from mininet_nets.launch_topology import validate_scenario
 
-SOURCE = Path(__file__).resolve().parents[2] / "scenarios/v0.json"
+SOURCE = Path(__file__).resolve().parents[2] / "network_preparation/source_v0.json"
 
 
 class ScenarioTests(unittest.TestCase):

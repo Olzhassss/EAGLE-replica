@@ -1,4 +1,4 @@
-# Python 3.11+.
+# Python 3.13+.
 numpy>=1.26,<3
 scipy>=1.11,<2
 networkx>=3.2,<4

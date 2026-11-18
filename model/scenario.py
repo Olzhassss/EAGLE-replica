@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SCENARIO = ROOT / "scenarios/v0.json"
+DEFAULT_SCENARIO = ROOT / "networks/v0.json"
 
 
 @dataclass(frozen=True)

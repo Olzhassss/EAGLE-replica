@@ -22,9 +22,12 @@ class Host:
     mac: bytes
     ip: bytes
 
+    def to_dict(self) -> dict:
+        return {"id": self.name, "mac": self.mac.hex(":"), "ip": f"{IPv4Address(self.ip)}/8"}
 
-def hosts_for(count: int, scenario: Path | None) -> list[Host]:
-    if scenario is None:
+
+def hosts_for(count: int, manifest: Path | None = None) -> list[Host]:
+    if manifest is None:
         return [
             Host(
                 f"h{index}",
@@ -33,9 +36,9 @@ def hosts_for(count: int, scenario: Path | None) -> list[Host]:
             )
             for index in range(1, count + 1)
         ]
-    rows = json.loads(scenario.read_text())["hosts"]
+    rows = json.loads(manifest.read_text())["hosts"]
     if len(rows) != count:
-        raise ValueError(f"{scenario} must define exactly {count} hosts")
+        raise ValueError(f"{manifest} must define exactly {count} hosts")
     hosts = [
         Host(
             row["id"],
@@ -51,8 +54,52 @@ def hosts_for(count: int, scenario: Path | None) -> list[Host]:
         len({getattr(host, field) for host in hosts}) != count
         for field in ("name", "mac", "ip")
     ):
-        raise ValueError("Scenario hosts need valid and unique IDs, MACs and IPv4 addresses")
+        raise ValueError("Hosts need valid and unique IDs, MACs and IPv4 addresses")
     return hosts
+
+
+def dataset_hosts(path: Path) -> list[dict]:
+    """Read host metadata, including manifests generated before it was explicit."""
+    data = json.loads(path.read_text())
+    if "hosts" in data:
+        return [host.to_dict() for host in hosts_for(len(data["hosts"]), path)]
+    rows = data.get("series", data.get("captures", []))
+    names = {row[endpoint] for row in rows for endpoint in ("source", "target")}
+    if not names:
+        raise ValueError(f"No host information in {path}")
+    capture_path = path
+    if "captures" not in data:
+        capture_path = path.with_name(path.stem.split("_")[0] + "_pcap.json")
+    addresses = {}
+    if capture_path.exists():
+        captures = json.loads(capture_path.read_text()).get("captures", [])
+        for row in captures:
+            for _, _, frame in capture_packets(capture_path.parent / row["path"]):
+                ethertype, offset = ethernet_payload(frame)
+                if ethertype != b"\x08\x00" or len(frame) < offset + 20:
+                    continue
+                for name, mac, ip in (
+                    (row["source"], frame[6:12], frame[offset + 12:offset + 16]),
+                    (row["target"], frame[:6], frame[offset + 16:offset + 20]),
+                ):
+                    host = Host(name, mac, ip).to_dict()
+                    if name in addresses and addresses[name] != host:
+                        raise ValueError(f"Inconsistent addresses for {name} in {capture_path}")
+                    addresses[name] = host
+                break
+    result = []
+    for name in sorted(names, key=lambda value: (len(value), value)):
+        if name in addresses:
+            result.append(addresses[name])
+        elif re.fullmatch(r"h[1-9][0-9]*", name):
+            index = int(name[1:])
+            result.append(Host(
+                name, b"\x02\x00" + index.to_bytes(4, "big"),
+                IPv4Address(0x0A000000 + index).packed,
+            ).to_dict())
+        else:
+            raise ValueError(f"Regenerate {path} to include explicit host metadata")
+    return result
 
 
 def _transport_checksum(
@@ -192,7 +239,9 @@ def generate_pcap_dataset(
             "first_packet_seconds": first_packet,
             "mbps_by_second": throughput,
         })
+    hosts = {host.name: host.to_dict() for pair in pairs for host in pair}
     path.write_text(json.dumps({
+        "schema_version": 1, "hosts": list(hosts.values()),
         "duration_seconds": len(pools[0]), "captures": captures,
     }, indent=2) + "\n")
     write_chart(path, rates)

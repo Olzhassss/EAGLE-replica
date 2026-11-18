@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "id": "V0-checkout",
+  "id": "v0",
   "provenance": "Reconstructed from the checked-in Mininet topology and Ryu port map.",
   "controllers": [
     {
@@ -324,18 +324,5 @@
     "peer_poll_seconds": 0.3,
     "peer_timeout_seconds": 2
   },
-  "traffic": {
-    "idle": [],
-    "synthetic": [
-      {
-        "kind": "tcp",
-        "id": "sample",
-        "source": "h1",
-        "target": "h4",
-        "start_seconds": 1,
-        "size_bytes": 20000000,
-        "rate_bps": 8000000
-      }
-    ]
-  }
+  "traffic": {"idle": []}
 }

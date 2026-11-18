@@ -1,3 +1,7 @@
+"""Launch a generated network and serve prepared traffic jobs."""
+
+from __future__ import annotations
+
 import argparse
 import hashlib
 import ipaddress
@@ -12,14 +16,14 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from types import FrameType
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from mininet.link import Link
-from mininet.net import Mininet
-from mininet.node import RemoteController
+if TYPE_CHECKING:
+    from mininet.link import Link
+    from mininet.net import Mininet
+    from mininet.node import RemoteController
 
 if __package__:
     from .traffic import TrialTraffic
@@ -117,142 +121,24 @@ def build_network(
 
 
 class EmulationSession:
-    def __init__(
-        self,
-        network: Mininet,
-        scenario: dict[str, Any],
-        fingerprint: str,
-        links: dict[frozenset[str], Link],
-        traffic: TrialTraffic,
-    ) -> None:
-        self.network = network
+    def __init__(self, fingerprint: str, traffic: TrialTraffic) -> None:
         self.fingerprint = fingerprint
-        self.links = links
         self.traffic = traffic
-        self.supports = {
-            row["id"]: row["support_switch"] for row in scenario["controllers"]
-        }
-        self.traffic_traces = tuple(scenario.get("traffic", {}))
-        self.faults = set()
-        self.disabled = set()
-        self.down_links = set()
-        self.mode = "forwarding"
-
-    def _set_blocked_links(self) -> list[dict[str, Any]]:
-        blocked = set(self.faults)
-        if self.mode == "interfaces":
-            blocked.update(link for link in self.links if link & self.disabled)
-        changes = []
-        for key in sorted(
-            self.down_links ^ blocked, key=lambda endpoints: tuple(sorted(endpoints))
-        ):
-            status = "down" if key in blocked else "up"
-            link = self.links[key]
-            start = time.monotonic()
-            for interface in (link.intf1, link.intf2):
-                output = interface.ifconfig(status)
-                if output:
-                    raise RuntimeError(
-                        f"Unable to set {interface} {status}: {output.strip()}"
-                    )
-            if status == "down":
-                self.down_links.add(key)
-            else:
-                self.down_links.discard(key)
-            changes.append(
-                {
-                    "link": sorted(key),
-                    "enabled": status == "up",
-                    "seconds": time.monotonic() - start,
-                }
-            )
-        self.down_links = blocked
-        return changes
-
-    def _set_ovs_state(self, switch: str, enabled: bool) -> None:
-        if enabled:
-            self.network[switch].start(self.network.controllers)
-        else:
-            subprocess.run(["ovs-vsctl", "--if-exists", "del-br", switch], check=True)
-
-    def set_resources(self, actions: dict[str, int]) -> dict[str, Any]:
-        """Apply optional physical changes for configured supporting switches only."""
-        desired = set()
-        for slot, action in actions.items():
-            if (
-                slot not in self.supports
-                or type(action) is not int
-                or action not in (0, 1)
-            ):
-                raise ValueError("Expected a binary action for a configured slot")
-            if not action:
-                desired.add(self.supports[slot])
-        if set(actions) != self.supports.keys():
-            raise ValueError("Supply exactly one resource action per controller")
-        timings = []
-        for switch in sorted(self.disabled ^ desired):
-            started = time.monotonic()
-            if self.mode == "ovs":
-                self._set_ovs_state(switch, switch not in desired)
-                if switch in desired:
-                    self.disabled.add(switch)
-                else:
-                    self.disabled.discard(switch)
-            timings.append(
-                {
-                    "switch": switch,
-                    "enabled": switch not in desired,
-                    "ovs_seconds": time.monotonic() - started
-                    if self.mode == "ovs"
-                    else None,
-                }
-            )
-        self.disabled = desired
-        start = time.monotonic()
-        link_changes = self._set_blocked_links()
-        return {
-            "mode": self.mode,
-            "changes": timings,
-            "interface_seconds": time.monotonic() - start
-            if self.mode == "interfaces"
-            else None,
-            "interface_changes": link_changes,
-            "applied_at": time.time(),
-        }
 
     def command(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation")
         if operation == "status":
-            return {
-                "scenario": self.fingerprint,
-                "traffic_profiles": self.traffic_traces,
-            }
+            return {"scenario": self.fingerprint}
         if operation == "finish":
-            return self.traffic.finish()
+            return self.traffic.finish(request.get("drain_seconds", 0))
         if operation == "reset":
-            mode = request.get("resource_mode", "forwarding")
-            if mode not in ("forwarding", "interfaces", "ovs"):
-                raise ValueError("Unknown resource mode")
             self.traffic.finish()
-            self.traffic.records = []
-            self.faults.clear()
-            self.set_resources({slot: 1 for slot in self.supports})
-            self.mode = mode
             return {"scenario": self.fingerprint}
         if operation == "traffic":
-            return self.traffic.start(request["profile"])
-        if operation == "resources":
-            return self.set_resources(request["actions"])
-        if operation == "link":
-            key = frozenset((request["source"], request["target"]))
-            if key not in self.links or type(request["up"]) is not bool:
-                raise ValueError("Expected a configured link and a boolean up value")
-            if request["up"]:
-                self.faults.discard(key)
-            else:
-                self.faults.add(key)
-            self._set_blocked_links()
-            return {"applied_at": time.time(), "up": request["up"]}
+            return self.traffic.start(
+                request["jobs"], request["duration_seconds"],
+                measure_flows=request.get("measure_flows", True),
+            )
         raise ValueError("Unknown emulation operation")
 
 
@@ -268,7 +154,7 @@ class ControlRequest(socketserver.StreamRequestHandler):
         if uid not in (0, self.server.owner_uid):
             return
         try:
-            request = json.loads(self.rfile.readline(65536))
+            request = json.loads(self.rfile.readline(64 * 1024 * 1024))
             if not isinstance(request, dict):
                 raise TypeError("Expected a JSON object")
             response = {"result": self.server.session.command(request)}
@@ -289,7 +175,7 @@ class ControlRequest(socketserver.StreamRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", type=Path, default=ROOT / "scenarios/v0.json")
+    parser.add_argument("--scenario", type=Path, default=ROOT / "networks/v0.json")
     parser.add_argument(
         "--cli", action="store_true", help="Open an interactive Mininet CLI"
     )
@@ -323,23 +209,15 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="eagle-mininet-") as directory:
         session_dir = Path(directory)
         session_dir.chmod(0o711)
-        traffic = TrialTraffic(
-            network,
-            scenario.get("traffic", {}),
-            args.scenario.resolve().parent,
-            session_dir,
-            owner_uid,
-        )
+        traffic = TrialTraffic(network, session_dir, owner_uid)
         try:
-            links = build_network(network, scenario, RemoteController)
+            build_network(network, scenario, RemoteController)
             network.start()
             network.staticArp()
             address = str(session_dir / "control.sock")
             with socketserver.UnixStreamServer(address, ControlRequest) as server:
                 server.owner_uid = owner_uid
-                server.session = EmulationSession(
-                    network, scenario, fingerprint, links, traffic
-                )
+                server.session = EmulationSession(fingerprint, traffic)
                 os.chown(address, owner_uid, owner_gid)
                 os.chmod(address, 0o600)
                 socket_path = Path(__file__).resolve().with_name(".socket")

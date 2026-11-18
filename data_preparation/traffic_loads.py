@@ -49,7 +49,7 @@ def write_chart(path: Path, rates: dict[tuple[str, str], list[float]]) -> None:
     figure.savefig(path.with_suffix(".png"), dpi=120)
 
 
-def _write_synthetic(path: Path, series: list[dict]) -> None:
+def _write_synthetic(path: Path, series: list[dict], metadata: dict) -> None:
     jobs = []
     rates = {}
     for index, direction in enumerate(series):
@@ -74,6 +74,7 @@ def _write_synthetic(path: Path, series: list[dict]) -> None:
                 )
         rates[source, target] = throughputs
     profile = {
+        **metadata,
         "duration_seconds": len(series[0]["windows"]),
         "series": series,
         "jobs": jobs,
@@ -101,19 +102,22 @@ def generate_synthetic_dataset(
         }
         for (source, target), windows in zip(pairs, pools, strict=True)
     ]
-    _write_synthetic(path, series)
+    hosts = {host.name: host.to_dict() for pair in pairs for host in pair}
+    _write_synthetic(path, series, {"schema_version": 1, "hosts": list(hosts.values())})
 
 
 def scale_synthetic(
     source: Path, target: Path, factor: float, sources: set[str] | None = None
 ) -> None:
-    series = json.loads(source.read_text())["series"]
+    data = json.loads(source.read_text())
+    series = data.pop("series")
+    data.pop("jobs", None)
     for direction in series:
         if sources is None or direction["source"] in sources:
             for window in direction["windows"]:
                 window["frame_bytes"] *= factor
                 window["packets_per_second"] *= factor
-    _write_synthetic(target, series)
+    _write_synthetic(target, series, data)
 
 
 def generate_loads(test: Path) -> None:

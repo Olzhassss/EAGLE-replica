@@ -1,118 +1,89 @@
-"""Load and validate run settings for the RL project."""
+"""Validated training and evaluation settings."""
 
+import copy
 import json
 import math
-from collections.abc import Collection
 from pathlib import Path
-from typing import Any
 
 from .scenario import ROOT
 
 DEFAULT_SETTINGS = ROOT / "settings/default.json"
 
 
-def load_settings(
-    path: Path | str,
-    *,
-    episode_steps: int | None = None,
-    resource_mode: str | None = None,
-    normalization: str | None = None,
-) -> dict[str, Any]:
-    data = json.loads(Path(path).read_text())
-    if episode_steps is not None:
-        data["episode_steps"] = episode_steps
-    if normalization is not None:
-        data["embedding"]["normalization"] = normalization
-    if resource_mode is not None:
-        data["resource_mode"] = resource_mode
-    data.setdefault("resource_mode", "forwarding")
-    data.setdefault("failures", [])
-    if data["resource_mode"] not in ("forwarding", "interfaces", "ovs"):
-        raise ValueError("resource_mode must be forwarding, interfaces, or ovs")
-    _positive_int(data.get("episode_steps"), "episode_steps")
-    _positive_number(data.get("decision_seconds"), "decision_seconds")
-    _positive_number(data.get("warmup_seconds"), "warmup_seconds", allow_zero=True)
+def positive(value: object, name: str, *, integer: bool = False, zero: bool = False) -> None:
+    expected = (int,) if integer else (int, float)
+    if (
+        type(value) not in expected
+        or not math.isfinite(value)
+        or value < 0
+        or (value == 0 and not zero)
+    ):
+        raise ValueError(f"{name} must be a {'nonnegative' if zero else 'positive'} {'integer' if integer else 'number'}")
+
+
+def load_settings(path: Path = DEFAULT_SETTINGS) -> dict:
+    defaults = json.loads(DEFAULT_SETTINGS.read_text())
+    updates = json.loads(Path(path).read_text())
+    data = copy.deepcopy(defaults)
+
+    def merge(target: dict, source: dict) -> None:
+        for key, value in source.items():
+            if key not in target:
+                raise ValueError(f"Unknown setting {key}")
+            if isinstance(value, dict) and isinstance(target[key], dict):
+                merge(target[key], value)
+            else:
+                target[key] = value
+
+    merge(data, updates)
+    for key in ("decision_seconds", "sample_timeout_seconds"):
+        positive(data[key], key)
+    for key in ("warmup_seconds", "drain_seconds"):
+        positive(data[key], key, zero=True)
     for key in ("order", "eval_points"):
-        _positive_int(data["embedding"].get(key), "embedding." + key)
-    if data["embedding"]["normalization"] not in ("identity", "source"):
-        raise ValueError("Select identity or source normalization")
+        positive(data["embedding"][key], "embedding." + key, integer=True)
+    if data["embedding"]["normalization"] not in ("source", "identity"):
+        raise ValueError("embedding.normalization must be source or identity")
     reward = data["reward"]
-    for key in ("alpha", "throughput_reference_bps", "power_reference_watts"):
-        _positive_number(reward.get(key), "reward." + key, allow_zero=key == "alpha")
-    for key in ("idle_switch_watts", "idle_port_watts", "dynamic_watts_per_mbps"):
-        _positive_number(
-            reward.get("power_model", {}).get(key),
-            "reward.power_model." + key,
-            allow_zero=True,
-        )
-    for event in data["failures"]:
-        _positive_int(event.get("step"), "failure.step", allow_zero=True)
-        if event["step"] >= data["episode_steps"] or event.get("kind") not in (
-            "link",
-            "controller",
-        ):
-            raise ValueError(
-                "Failure needs a step in the trial and kind link or controller",
-            )
+    positive(reward["alpha"], "reward.alpha", zero=True)
+    for key in ("throughput_reference_bps", "power_reference_watts"):
+        positive(reward[key], "reward." + key)
+    for key, value in reward["power_model"].items():
+        positive(value, "power_model." + key, zero=True)
+    for key in ("episodes", "pretrain_episodes", "calibration_episodes"):
+        positive(data["training"][key], "training." + key, integer=True)
+    learning = data["learning"]
+    for key in ("actor_lr", "critic_lr", "estimator_lr"):
+        positive(learning[key], "learning." + key)
+    positive(learning["batch_size"], "learning.batch_size", integer=True)
+    pruning = learning["pruning"]
+    if pruning["mode"] not in ("none", "static", "dynamic"):
+        raise ValueError("pruning.mode must be none, static, or dynamic")
+    positive(pruning["warmup_rounds"], "pruning.warmup_rounds", integer=True, zero=True)
+    positive(pruning["ramp_rounds"], "pruning.ramp_rounds", integer=True)
+    for key in ("episodes", "repetitions"):
+        positive(data["evaluation"][key], "evaluation." + key, integer=True)
     return data
 
 
-def training_stages(
-    settings: dict[str, Any],
-    episodes: int,
-    traffic: str,
-    known_profiles: Collection[str],
-) -> list[dict[str, Any]]:
-    learning = settings["learning"]
-    _positive_int(learning.get("batch_size"), "learning.batch_size")
-    for rate in ("actor_lr", "critic_lr", "estimator_lr"):
-        _positive_number(learning.get(rate), "learning." + rate)
-    pruning = learning["pruning"]
-    if pruning["mode"] not in ("dense", "static", "dynamic"):
-        raise ValueError("pruning.mode must be dense, static or dynamic")
-    if pruning["mode"] == "dynamic":
-        _positive_int(pruning.get("ramp_rounds"), "pruning.ramp_rounds")
-        _positive_int(
-            pruning.get("warmup_rounds", 5),
-            "pruning.warmup_rounds",
-            allow_zero=True,
-        )
-    stages = learning.get("stages") or [
-        {
-            "name": "training",
-            "mode": "online",
-            "traffic": traffic,
-            "episodes": episodes,
-        },
-    ]
-    if len({stage["name"] for stage in stages}) != len(stages):
-        raise ValueError("Training stage names must be distinct")
-    for stage in stages:
-        _positive_int(stage.get("episodes"), str(stage["name"]) + ".episodes")
-        if stage.get("traffic") not in known_profiles:
-            raise ValueError(
-                "Set a scenario traffic profile for stage " + str(stage["name"]),
-            )
-        if stage["mode"] not in ("pretrain", "frozen", "online"):
-            raise ValueError("Unknown estimator mode: " + str(stage["mode"]))
+def training_stages(mode: str, episodes: int, pretrain_episodes: int) -> list[dict]:
+    """Pretrain across the source conditions, then freeze the estimator."""
+    positive(episodes, "episodes", integer=True)
+    positive(pretrain_episodes, "pretrain_episodes", integer=True)
+    profiles = ["dc_pcap"] if mode == "pcaps" else ["dc_t0"]
+    if mode == "curriculum":
+        profiles += [f"dc_t0_trenv{index}" for index in range(2, 6)]
+    if mode not in ("pcaps", "synthetic", "curriculum"):
+        raise ValueError("Training mode must be pcaps, synthetic, or curriculum")
+    if episodes < len(profiles):
+        raise ValueError("Curriculum training needs at least five policy episodes")
+    stages = [{
+        "name": "pretrain", "mode": "pretrain",
+        "profiles": profiles, "episodes": pretrain_episodes,
+    }]
+    share, extra = divmod(episodes, len(profiles))
+    stages.extend(
+        {"name": name, "mode": "frozen", "profiles": [name], "episodes": share + (index < extra)}
+        for index, name in enumerate(profiles)
+    )
     return stages
-
-
-def _positive_int(value: Any, name: str, *, allow_zero: bool = False) -> None:
-    if type(value) is not int or value < (0 if allow_zero else 1):
-        msg = "Set {} to an integer {}".format(name, ">= 0" if allow_zero else "> 0")
-        raise ValueError(msg)
-
-
-def _positive_number(value: Any, name: str, *, allow_zero: bool = False) -> None:
-    if (
-        type(value) not in (float, int)
-        or not math.isfinite(value)
-        or value < 0
-        or (value == 0 and not allow_zero)
-    ):
-        msg = "Set {} to a finite number {}".format(
-            name,
-            ">= 0" if allow_zero else "> 0",
-        )
-        raise ValueError(msg)

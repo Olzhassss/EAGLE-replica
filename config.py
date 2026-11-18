@@ -1,5 +1,7 @@
 class Config:
     SEED = 42
+    DECISION_SECONDS = 5
+    MIN_DECISIONS = 20
     N_DOMAINS = 3
     """Number of domains (communities/subnets)"""
     SWITCHES_PER_DOMAIN = 1

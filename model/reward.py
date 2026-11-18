@@ -1,6 +1,5 @@
 """Compute per-slot reward components from acknowledged controller snapshots."""
 
-from collections.abc import Iterable, Mapping
 from statistics import mean
 from typing import Any
 
@@ -32,21 +31,3 @@ def compute_reward(
         "throughput_term": throughput,
         "cost_term": cost,
     }
-
-
-def compute_carbon_grams(
-    sample_duration_seconds: float,
-    dynamic_watts_by_node: Mapping[str, float],
-    active_links: Iterable[tuple[str, str]],
-    intensity_grams_per_kwh: Mapping[str, float],
-    idle_port_watts: float,
-) -> float:
-    """Integrate the dynamic and active-port terms in study Eq. (35)."""
-    dynamic = sum(
-        watts * intensity_grams_per_kwh[node]
-        for node, watts in dynamic_watts_by_node.items()
-    )
-    ports = idle_port_watts * sum(
-        intensity_grams_per_kwh[u] + intensity_grams_per_kwh[v] for u, v in active_links
-    )
-    return (dynamic + ports) * sample_duration_seconds / 3_600_000

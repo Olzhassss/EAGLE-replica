@@ -67,7 +67,6 @@ def _managed_tcp(job: dict[str, Any]) -> dict[str, Any]:
     started = source.get("started_at")
     completed = target.get("completed_at")
     fct = completed - started if started is not None and completed is not None else None
-    first = target.get("first_byte_at")
     received = target.get("received_bytes", 0)
     return {
         "flow_id": job["id"],
@@ -81,9 +80,6 @@ def _managed_tcp(job: dict[str, Any]) -> dict[str, Any]:
         "sent_bytes": source.get("sent_bytes", 0),
         "received_bytes": received,
         "fct_seconds": fct,
-        "first_byte_seconds": first - started
-        if first is not None and started is not None
-        else None,
         "sender_error": source.get("error"),
     }
 
@@ -127,9 +123,8 @@ def _pcap_flows(job: dict[str, Any], cache: CaptureCache) -> Iterator[dict[str, 
         cache[key] = _expected_payload(job["resolved_path"])
     expected = cache[key]
     if not expected:
-        raise ValueError("No TCP payload flows in trace " + job["id"])
+        return
     sent = {}
-    sent_packets = {}
     start_times = {}
     for flow, sequence, length, timestamp in _tcp_packets(job["sent_capture"]):
         if flow not in expected:
@@ -141,34 +136,22 @@ def _pcap_flows(job: dict[str, Any], cache: CaptureCache) -> Iterator[dict[str, 
             sent.setdefault(flow, ByteRanges()).add_intersection(
                 start, start + length, payload
             )
-            sent_packets.setdefault((flow, sequence, length), timestamp)
     received = {}
-    first_seen = {}
     complete_at = {}
-    delay_sum = {}
-    delay_count = {}
     for flow, sequence, length, timestamp in _tcp_packets(job["received_capture"]):
         if length <= 0 or flow not in expected:
             continue
-        sent_at = sent_packets.pop((flow, sequence, length), None)
-        if sent_at is not None and sent_at <= timestamp:
-            delay_sum[flow] = delay_sum.get(flow, 0.0) + timestamp - sent_at
-            delay_count[flow] = delay_count.get(flow, 0) + 1
         if flow in complete_at:
             continue
         base, payload = expected[flow]
         start = (sequence - base) & 0xFFFF_FFFF
         seen = received.setdefault(flow, ByteRanges())
-        before = seen.size
         seen.add_intersection(start, start + length, payload)
-        if seen.size > before:
-            first_seen.setdefault(flow, timestamp)
         if seen.size == payload.size:
             complete_at[flow] = timestamp
     for flow, (_, payload) in expected.items():
         started = start_times.get(flow)
         completed = complete_at.get(flow)
-        first = first_seen.get(flow)
         yield {
             "flow_id": job["id"] + ":" + " ".join(map(str, flow)),
             "kind": "pcap",
@@ -183,9 +166,4 @@ def _pcap_flows(job: dict[str, Any], cache: CaptureCache) -> Iterator[dict[str, 
             "fct_seconds": completed - started
             if completed is not None and started is not None
             else None,
-            "first_byte_seconds": first - started
-            if first is not None and started is not None
-            else None,
-            "matched_packets": delay_count.get(flow, 0),
-            "packet_delay_sum_seconds": delay_sum.get(flow, 0),
         }

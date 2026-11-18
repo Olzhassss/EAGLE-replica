@@ -1,29 +1,26 @@
-# Ryu OpenFlow project
+# Ryu OpenFlow controllers
 
-Create a dedicated Python 3.7 virtual environment. From the repository root:
+Create the dedicated Python 3.7 environment from the repository root.
 
 ```sh
 python3.7 -m venv ryu_controller/.venv
 ryu_controller/.venv/bin/python -m pip install 'setuptools==57.5.0' wheel
 ryu_controller/.venv/bin/python -m pip install --no-build-isolation -r ryu_controller/requirements.txt
-ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario scenarios/v0.json
+ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario networks/v0.json
 ```
 
-The launcher uses its own Python 3.7 interpreter for each Ryu child and manages only those children. Ctrl-C shuts them down. For separately placed controllers, run the launcher with `--controller ID` on each host and use a scenario with reachable endpoints and local bind addresses. Synchronize testbed clocks for sample-window and action-revision comparisons. The default V0 endpoints bind to loopback for a single-machine lab.
+Start Ryu before Mininet with the identical generated network JSON. The launcher uses its Python 3.7 interpreter for each child. Ctrl-C shuts down those children. `--controller ID` selects controllers for a separately placed deployment with reachable network endpoints. Synchronize clocks across hosts for sample-window and action-revision checks.
 
-## Control and measurements
+Ryu defaults to OpenFlow 1.5. Set `OPENFLOW_VERSION = "1.3"` in `controller.py` when using OpenFlow 1.3. The Mininet launcher enables both versions on its bridges.
 
-Ryu defaults to OpenFlow 1.5. To use OpenFlow 1.3, set `OPENFLOW_VERSION = "1.3"` in [controller.py](controller.py) and restart Ryu. The Mininet launcher enables both versions on its Open vSwitch bridges. For external switches, enable the version selected in Ryu.
+`controller.py` owns OpenFlow and HTTP handlers, port validation, master ownership, and route reconciliation. `topology_state.py` maintains configured, active, and observed graphs while preserving logical controller slots. `routing.py` computes stable end-to-end paths per ordered host MAC pair, preferring the source domain's support switch among equal-cost choices. `openflow_rules.py` reconciles changed EAGLE-owned rules. `telemetry.py` pairs full poll replies, handles counter resets, and attributes delivered bytes to destination attachment switches.
 
-- `controller.py` registers the OpenFlow event handlers and HTTP interface. It checks datapath ports against the scenario, reconciles topology across peers, establishes an OpenFlow master for each owned switch, and waits for a barrier before sampling new routes.
-- `topology_state.py` separates configured, active, and agent observation graphs. A logical slot survives controller loss because another live controller can take responsibility for its switches. Topology presence frames use a scenario fingerprint, sender identity, incarnation, and sequence. Startup expects all configured controllers and switches to appear before enabling the loop. Failover applies after startup and peer expiry.
-- `routing.py` plans a deterministic end-to-end shortest path for each ordered host MAC pair. It prefers an equal-cost path through the source domain's support switch, then chooses among remaining candidates with CRC32C. `openflow_rules.py` sends only changed EAGLE-owned rules.
-- `telemetry.py` pairs full multipart replies by round. Counter resets and topology generations restart baselines where needed. Delivered flow bytes are attributed to the destination attachment switch so study throughput counts a flow once.
+| Interface | Purpose |
+| --- | --- |
+| `GET /network/state` | Controller topology, slot ownership, and action revisions |
+| `GET /network/stats?controller_id=c0` | Fresh coherent telemetry, or HTTP 503 while a sample is pending |
+| `PUT /model/actions?controller_id=c0&details=1` | Apply `[0]` or `[1]` and acknowledge its revision and acceptance time |
 
-| Interface                                         | Purpose                                                                                                                                                                                                   |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /network/state`                              | Publish the controller's view of ports, slot owners, and action revisions.                                                                                                                                |
-| `GET /network/stats?controller_id=c0` | Return a fresh snapshot with its window, active topology, resource state, delivered byte counters, and dispatch timings. A pending sample or ownership change returns 503. |
-| `PUT /model/actions?controller_id=c0&details=1`   | Accept `[0]` or `[1]` and return an acknowledgment with revision and accepted time. Without `details=1` the response echoes the array.                                                                    |
+The supervisor writes its address to `.socket` at the repository root. The model discovers it for restoring the controller processes before an episode. Use `--ryu-socket` to override that address. Restart the supervisor and Mininet manually when changing topology.
 
-The supervisor writes its Unix socket address to `.socket` at the repository root. The RL runner discovers it automatically for resets and controller fault events. Use `--ryu-socket` to override it. After Mininet starts, the intended smoke check is to fetch statistics for each slot and toggle its supporting path from the [fixed-policy runner](../model/README.md).
+[Root documentation](../Documentation.md) contains the experiment commands, data contracts, and evaluation protocol.

@@ -1,50 +1,53 @@
 # EAGLE replica
 
-This repository implements the Mininet control loop and multi-agent training protocol from Monaco et al., _Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning With EAGLE_ (IEEE TNSM 2026, DOI `10.1109/TNSM.2026.3717361`).
+EAGLE trains cooperative SDN agents to balance delivered throughput and modeled power. The implementation uses native PyTorch, FeatherGraph observations, and consensus with dynamic pruning enabled by default.
 
-| Project                             | Runtime                                       | Guide                                   |
-| ----------------------------------- | --------------------------------------------- | --------------------------------------- |
-| Mininet emulation and traffic       | System Python 3 with Mininet and Open vSwitch | [Mininet guide](mininet_nets/README.md) |
-| Ryu OpenFlow controllers            | Python 3.7 in `ryu_controller/.venv/`         | [Ryu guide](ryu_controller/README.md)   |
-| EAGLE learning and experiment tools | Modern Python in `model/.venv/`               | [RL guide](model/README.md)             |
+[Documentation.md](Documentation.md) covers preparation, configuration, model artifacts, metrics, and all five evaluations. [pipeline.ipynb](pipeline.ipynb) walks through the complete workflow with visualizations and manual topology changes.
 
-## Start an experiment
+| Component | Runtime | Guide |
+| --- | --- | --- |
+| Network, dataset, training, and evaluation tools | Python 3.13 in `model/.venv` | [Root documentation](Documentation.md) |
+| OpenFlow controllers | Python 3.7 in `ryu_controller/.venv` | [Ryu](ryu_controller/README.md) |
+| Emulation and traffic | System Python 3.10+ with Mininet and Open vSwitch | [Mininet](mininet_nets/README.md) |
 
-Run these commands from the repository root in separate terminals after setting up the two virtual environments.
+## Prepare inputs
 
-1. Start the three controller processes. Keep the launcher running.
-
-   ```sh
-   ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario scenarios/v0.json
-   ```
-
-2. Start the emulated network with system Python. The launcher writes its control socket address to `mininet_nets/.socket`. Add `--cli` for an interactive Mininet prompt.
-
-   ```sh
-   sudo python3 mininet_nets/launch_topology.py --scenario scenarios/v0.json
-   ```
-
-3. Run a fixed policy with the deterministic synthetic flow.
-
-   ```sh
-   model/.venv/bin/python -m model.evaluate \
-     --traffic synthetic --fixed 1,1,1 --episode-steps 8 --output runs/fixed-v0
-   ```
-
-   Follow the [training and evaluation pipeline](pipeline.md) for calibration, training and frozen evaluation. The runner discovers both launcher sockets. The RL runner starts and stops its traffic per trial. Use Ctrl-C in the Mininet and Ryu launcher terminals to stop their services.
-
-[Documentation.md](Documentation.md) describes the project boundaries, control loop, and replication workflow. [Scenarios](scenarios/README.md) lists the shared data and the remaining research inputs. [Partitioning](partitioning/README.md) runs offline in the RL environment.
-
-## Traffic trace execution
-
-Prepare the local Digital Corpora capture and generate a scenario with separate training and held-out traffic profiles.
+Run from the repository root after installing the dependencies in the guides. Dataset generation uses the local Digital Corpora and Megalodon captures.
 
 ```sh
-model/.venv/bin/python -m model.prepare_traces 5gb-tcp-connection.pcap.gz --output runs/corpora-v0
+model/.venv/bin/python -m data_preparation default --hosts 9 --min-decisions 20
+model/.venv/bin/python -m network_preparation v0 --dataset datasets/9_hosts/train/dc_t0.json
+model/.venv/bin/python -m network_preparation v3 --dataset datasets/9_hosts/train/dc_t0.json
+model/.venv/bin/python -m data_preparation congestion --hosts 9 --network networks/v0.json
 ```
 
-Start both launchers with `--scenario runs/corpora-v0/scenario.json`. Pass the same scenario to training or evaluation and select `--traffic pcap-train` or `--traffic pcap-eval`. See the [trace run commands and study inputs](scenarios/README.md#run-the-digital-corpora-capture).
+V0 uses the checked-in source graph. V3 extends it to 16 switches and 22 inter-switch links. Both take host identities and addresses from the dataset. Random and Topology Zoo generators provide V1, V2, and V4 as described in the root documentation.
 
-For the study's Megalodon T2 evaluation, prepare `MegalodonChallenge.7z` with the [Megalodon recipe](scenarios/README.md#run-megalodon-for-t2) and reuse the Digital Corpora-trained checkpoint.
+## Train
 
-The current application uses PyTorch directly. The original DI-engine tree remains available for the planned compatibility comparison.
+Start Ryu first, then Mininet, in separate terminals with the same generated network.
+
+```sh
+ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario networks/v0.json
+sudo python3 mininet_nets/launch_topology.py --scenario networks/v0.json
+```
+
+```sh
+model/.venv/bin/python -m model.train --network v0.json --traffic synthetic --output dc_t0
+model/.venv/bin/python -m model.train --network v0.json --traffic pcaps --output dc_pcaps
+model/.venv/bin/python -m model.train --network v0.json --traffic curriculum --output dc_full
+```
+
+Training resolves datasets from the network's host count. It calibrates observation normalization on source training traffic, pretrains the reward estimator, and freezes it during policy learning. Output includes `models/<name>`, `models/<name>.csv`, `models/<name>.png`, and `models/checkpoints/<name>.pth`. Use `--settings` for a JSON configuration and `--resume` to continue the same named model.
+
+## Evaluate
+
+```sh
+model/.venv/bin/python -m model.eval_topology_embeddings --network v0.json --model dc_t0
+model/.venv/bin/python -m model.eval_traffic_embeddings --model dc_t0
+model/.venv/bin/python -m model.eval_datasets --models dc_t0 dc_pcaps dc_full
+model/.venv/bin/python -m model.eval_topologies --network v0.json --models dc_t0 dc_pcaps dc_full
+model/.venv/bin/python -m model.eval_pruning
+```
+
+For the two topology evaluations, restart Ryu and Mininet manually and repeat collection for each of `v0.json` through `v4.json`. Collection generates the aggregate plots once all five results are available. `--plot-only` redraws them from saved results. Evaluation figures are saved under `eval/`.

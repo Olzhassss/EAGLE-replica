@@ -77,12 +77,6 @@ class ControllerSupervisor:
         if operation == "restore":
             for controller_id in self.controllers:
                 self.start(controller_id)
-        elif operation in ("stop", "start"):
-            controller_id = command["controller_id"]
-            if controller_id not in self.controllers:
-                raise ValueError("Unknown controller " + controller_id)
-            handler = self.start if operation == "start" else self.stop
-            handler(controller_id)
         elif operation != "status":
             raise ValueError("Unknown supervisor operation")
         return {
@@ -106,7 +100,7 @@ class SupervisorRequest(socketserver.StreamRequestHandler):
 
 def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", type=Path, default=ROOT / "scenarios/v0.json")
+    parser.add_argument("--scenario", type=Path, default=ROOT / "networks/v0.json")
     parser.add_argument(
         "--controller",
         action="append",

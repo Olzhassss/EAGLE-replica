@@ -1,6 +1,7 @@
 """Read and write native EAGLE checkpoints."""
 
 import tempfile
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,11 @@ import torch
 from .actor_critic import ActorCritic
 from .observations import ObservationEncoder
 from .scenario import Scenario
+
+
+def checkpoint_digest(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 def load_checkpoint(path: Path) -> dict[str, Any]:
     """Load tensor and primitive state on CPU."""
@@ -22,6 +28,7 @@ def load_checkpoint(path: Path) -> dict[str, Any]:
 
 def save_checkpoint(path: Path, data: dict[str, Any]) -> None:
     """Write the complete episode-boundary state before replacing the destination."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         dir=path.parent,
         prefix="checkpoint-",
