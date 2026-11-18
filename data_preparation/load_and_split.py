@@ -31,9 +31,12 @@ def write_packet(stream: BinaryIO, timestamp_ns: int, length: int, data: bytes) 
     stream.write(PCAP_RECORD.pack(second, fraction, len(data), length) + data)
 
 
-def load_windows(capture: Path, spool: Path, *, megalodon: bool = False) -> list[Window]:
-    """Spool original frames to disk, keeping only window counts in memory."""
-    spool.mkdir()
+def load_windows(
+    capture: Path, spool: Path, *, megalodon: bool = False, store_packets: bool = True,
+) -> list[Window]:
+    """Count source windows, optionally spooling their frames for PCAP output."""
+    if store_packets:
+        spool.mkdir()
     windows: dict[tuple[str, int], Window] = {}
     streams: OrderedDict[tuple[str, int], BinaryIO] = OrderedDict()
     earliest = latest = None
@@ -49,17 +52,19 @@ def load_windows(capture: Path, spool: Path, *, megalodon: bool = False) -> list
             if key not in windows:
                 windows[key] = Window(second, phase, spool / f"{phase}-{second}.pcap")
             window = windows[key]
+            window.packets += 1
+            window.frame_bytes += length
+            if not store_packets:
+                continue
             stream = streams.pop(key, None)
             if stream is None:
                 if len(streams) >= OPEN_WINDOWS:
                     streams.popitem(last=False)[1].close()
                 stream = window.capture.open("ab")
-                if not window.packets:
+                if window.packets == 1:
                     stream.write(PCAP_HEADER)
             streams[key] = stream
             write_packet(stream, stamp, length, data)
-            window.packets += 1
-            window.frame_bytes += length
     finally:
         for stream in streams.values():
             stream.close()

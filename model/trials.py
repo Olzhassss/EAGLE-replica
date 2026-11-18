@@ -10,6 +10,7 @@ from .datasets import Dataset
 from .flow_records import collect_flow_records
 from .joint_environment import JointEnvironment
 from .run_log import RunLog
+from .settings import positive
 
 
 def run_trial(
@@ -24,7 +25,10 @@ def run_trial(
     observations: int | None = None,
     nonzero_only: bool = False,
     measure_flows: bool = True,
+    steps: int | None = None,
 ) -> dict:
+    if steps is not None:
+        positive(steps, "steps", integer=True)
     log.write(
         "trial_start", episode=episode,
         dataset=dataset.name, dataset_sha256=dataset.fingerprint,
@@ -34,9 +38,9 @@ def run_trial(
     started = time.monotonic()
     success = False
     try:
-        observation, initial = environment.reset(dataset, measure_flows=measure_flows)
+        observation, initial = environment.reset(dataset, measure_flows=measure_flows, steps=steps)
         log.write("reset", episode=episode, observation=observation["global_obs"].tolist(), **initial)
-        decisions = dataset.decisions(environment.settings)
+        decisions = dataset.decisions(environment.settings) if steps is None else steps
         for decision in range(1, decisions + 1):
             actions = np.asarray(policy(observation), dtype=int)
             next_observation, rewards, terminated, truncated, info = environment.step(actions)

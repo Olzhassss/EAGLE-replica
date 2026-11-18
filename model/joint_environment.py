@@ -19,6 +19,7 @@ from .datasets import Dataset
 from .observations import ObservationEncoder
 from .reward import compute_reward
 from .scenario import Scenario
+from .settings import positive
 
 
 class JointEnvironment:
@@ -118,12 +119,15 @@ class JointEnvironment:
         return acknowledgments
 
     def reset(
-        self, dataset: Dataset, *, measure_flows: bool = True,
+        self, dataset: Dataset, *, measure_flows: bool = True, steps: int | None = None,
     ) -> tuple[dict[str, NDArray], dict[str, Any]]:
         """Restore forwarding and start the prepared traffic schedule."""
         self.steps = 0
         self.snapshots = None
-        self.settings = dict(self.settings, episode_steps=dataset.decisions(self.settings))
+        if steps is not None:
+            positive(steps, "steps", integer=True)
+        horizon = dataset.decisions(self.settings) if steps is None else steps
+        self.settings = dict(self.settings, episode_steps=horizon)
         self.emulation.reset(self.scenario.fingerprint)
         actions = self._apply([1] * len(self.slots))
         after = max(ack["accepted_at"] for ack in actions.values())

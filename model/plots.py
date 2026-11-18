@@ -1,10 +1,11 @@
-"""Matched-baseline metrics and figures for the five evaluation workflows."""
+"""Matched-baseline metrics and figures for evaluation workflows."""
 
 from pathlib import Path
 from statistics import mean
 
 import numpy as np
 from matplotlib.figure import Figure
+from matplotlib.ticker import MaxNLocator
 from sklearn.manifold import TSNE
 
 from .artifacts import read_rewards, write_json
@@ -19,6 +20,30 @@ DATASET_LABELS = {
     **{f"dc_t0_trenv{index}": f"TrEnv {index}" for index in range(2, 6)},
 }
 COLORS = ("#3374a5", "#e49c39", "#45966c", "#bd647c", "#7a68a8")
+
+
+def plot_switch_counts(counts: dict[str, list[int]], target: Path) -> None:
+    figure = Figure(figsize=(9, 4.5), layout="constrained")
+    axis = figure.subplots()
+    baseline = counts["baseline"]
+    for index, (model, enabled) in enumerate(counts.items()):
+        axis.step(
+            range(1, len(enabled) + 1), enabled, where="post", marker=".",
+            label=f"{model} (final {enabled[-1]})",
+            color="#65717a" if model == "baseline" else COLORS[index - 1],
+            linestyle="--" if model == "baseline" else "-",
+        )
+    axis.set(
+        xlabel="Decision step", ylabel="Enabled controllable switches",
+        xlim=(0.5, len(baseline) + 0.5),
+        ylim=(-0.1, baseline[0] + 0.3),
+    )
+    axis.xaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
+    axis.set_yticks(range(baseline[0] + 1))
+    axis.grid(alpha=0.25)
+    axis.legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 1.25))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, dpi=170)
 
 
 def interval(values: list[float | None], rng: np.random.Generator) -> dict:

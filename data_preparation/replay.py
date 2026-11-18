@@ -1,6 +1,7 @@
 """Write timestamped, address-remapped Ethernet captures for each host direction."""
 
 import json
+import math
 import re
 import struct
 from dataclasses import dataclass
@@ -199,36 +200,36 @@ def rewrite_frame(data: bytes, source: Host, target: Host) -> bytes:
 
 
 def generate_pcap_dataset(
-    path: Path, pools: list[list[Window]], pairs: list[tuple[Host, Host]]
+    path: Path, pools: list[list[Window]], pairs: list[tuple[Host, Host]],
+    *, time_scale: float = 1,
 ) -> None:
     directory = path.with_suffix("")
     directory.mkdir()
     captures = []
     rates = {}
+    duration = len(pools[0]) * time_scale
     for index, ((source, target), windows) in enumerate(zip(pairs, pools, strict=True)):
         capture = directory / f"{index + 1}.pcap"
-        throughput = []
+        throughput = [0.0] * math.ceil(duration)
         packets = frame_bytes = 0
         first_packet = None
         with capture.open("wb") as stream:
             stream.write(PCAP_HEADER)
             for elapsed, window in enumerate(windows):
-                window_bytes = 0
                 if window.packets:
                     records = sorted(
                         capture_packets(window.capture), key=lambda packet: packet[0]
                     )
                     for stamp, length, data in records:
-                        timestamp = elapsed * SECOND + stamp % SECOND
+                        timestamp = round((elapsed * SECOND + stamp % SECOND) * time_scale)
                         if first_packet is None:
                             first_packet = timestamp / SECOND
                         write_packet(
                             stream, timestamp, length, rewrite_frame(data, source, target)
                         )
-                        window_bytes += length
+                        throughput[timestamp // SECOND] += length * 8 / 1_000_000
+                        frame_bytes += length
                     packets += len(records)
-                frame_bytes += window_bytes
-                throughput.append(window_bytes * 8 / 1_000_000)
         rates[source.name, target.name] = throughput
         captures.append({
             "source": source.name,
@@ -242,6 +243,7 @@ def generate_pcap_dataset(
     hosts = {host.name: host.to_dict() for pair in pairs for host in pair}
     path.write_text(json.dumps({
         "schema_version": 1, "hosts": list(hosts.values()),
-        "duration_seconds": len(pools[0]), "captures": captures,
+        "duration_seconds": duration, "traffic_scale_factor": time_scale,
+        "captures": captures,
     }, indent=2) + "\n")
     write_chart(path, rates)

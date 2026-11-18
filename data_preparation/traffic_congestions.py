@@ -34,15 +34,18 @@ def _communities(network: dict) -> list[set[str]]:
     return list(communities.values())
 
 
-def generate_congestions(network: Path, dataset: Path, hosts: int) -> None:
+def generate_congestions(
+    network: Path, dataset: Path, hosts: int, *, skip_train: bool = False,
+) -> None:
     communities = _communities(json.loads(network.read_text()))
     all_hosts = set().union(*communities)
     if len(all_hosts) != hosts:
         raise ValueError(f"{network} must define exactly {hosts} hosts")
+    splits = ("test",) if skip_train else ("train", "test")
 
     with TemporaryDirectory(prefix=".congestion-", dir=dataset) as temporary:
         staging = Path(temporary)
-        for split in ("train", "test"):
+        for split in splits:
             source = dataset / split / "dc_t0.json"
             series = json.loads(source.read_text())["series"]
             directions = {(row["source"], row["target"]) for row in series}
@@ -54,8 +57,8 @@ def generate_congestions(network: Path, dataset: Path, hosts: int) -> None:
                 scale_synthetic(
                     source, target / f"dc_t0_trenv{setup}.json", SCALE_FACTOR, sources
                 )
-        with (dataset / "train" / "dc_t0.json").open("rb") as baseline:
+        with (dataset / "test" / "dc_t0.json").open("rb") as baseline:
             flock(baseline, LOCK_EX)
-            for split in ("train", "test"):
+            for split in splits:
                 for path in (staging / split).iterdir():
                     path.replace(dataset / split / path.name)

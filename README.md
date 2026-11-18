@@ -2,7 +2,7 @@
 
 EAGLE trains cooperative SDN agents to balance delivered throughput and modeled power. The implementation uses native PyTorch, FeatherGraph observations, and consensus with dynamic pruning enabled by default.
 
-[Documentation.md](Documentation.md) covers preparation, configuration, model artifacts, metrics, and all five evaluations. [pipeline.ipynb](pipeline.ipynb) walks through the complete workflow with visualizations and manual topology changes.
+[Documentation.md](Documentation.md) covers preparation, configuration, model artifacts, metrics, and all six evaluations. [pipeline.ipynb](pipeline.ipynb) walks through the complete workflow with visualizations and manual topology changes.
 
 | Component | Runtime | Guide |
 | --- | --- | --- |
@@ -22,6 +22,14 @@ model/.venv/bin/python -m data_preparation congestion --hosts 9 --network networ
 ```
 
 V0 uses the checked-in source graph. V3 extends it to 16 switches and 22 inter-switch links. Both take host identities and addresses from the dataset. Random and Topology Zoo generators provide V1, V2, and V4 as described in the root documentation.
+
+`Config.TRAFFIC_SCALE_FACTOR` in `config.py` stretches traffic timing. Its default `None` uses the host count. `min_decisions` applies to the final stretched duration. Repetition fills a shortage after scaling. With nine hosts and five-second decisions, 12 source seconds become 108 seconds, providing 21 decisions and satisfying a minimum of 20. Synthetic jobs use the same longer schedule and reduced rates.
+
+Use `--skip-pcaps` to generate synthetic datasets and avoid packet spooling. Add `--skip-train` to prepare test data only. The latter option also applies to congestion preparation.
+
+```sh
+model/.venv/bin/python -m data_preparation default --hosts 50 --skip-pcaps --skip-train
+```
 
 ## Train
 
@@ -48,6 +56,9 @@ model/.venv/bin/python -m model.eval_traffic_embeddings --model dc_t0
 model/.venv/bin/python -m model.eval_datasets --models dc_t0 dc_pcaps dc_full
 model/.venv/bin/python -m model.eval_topologies --network v0.json --models dc_t0 dc_pcaps dc_full
 model/.venv/bin/python -m model.eval_pruning
+model/.venv/bin/python -m model.eval_switches --network v0.json --steps 20
 ```
 
 For the two topology evaluations, restart Ryu and Mininet manually and repeat collection for each of `v0.json` through `v4.json`. Collection generates the aggregate plots once all five results are available. `--plot-only` redraws them from saved results. Evaluation figures are saved under `eval/`.
+
+The switch-count evaluation runs one episode each for the three models and the all-on baseline. It plots the sum of binary actions after each decision and includes the final counts in the legend. DC synthetic T0 is the default test dataset. Use `--dataset` to select another prepared test manifest by name, and `--models` to select three inference files. Outputs are `eval/switches_<network>.png` and the corresponding JSON measurements.

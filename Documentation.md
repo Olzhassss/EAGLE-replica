@@ -29,7 +29,7 @@ Use the [Ryu guide](ryu_controller/README.md) for its Python 3.7 dependencies an
 | `datasets/<n>_hosts/train/` | Source training manifests and PCAP files                                           |
 | `datasets/<n>_hosts/test/`  | Held-out source, Megalodon, load, and congestion manifests                         |
 | `settings/`                 | Default settings and pruning overrides                                             |
-| `model/`                    | Learners, runtime clients, training, measurement, and five evaluation entry points |
+| `model/`                    | Learners, runtime clients, training, measurement, and six evaluation entry points |
 | `models/`                   | Named inference files and training reward CSV/PNG files                            |
 | `models/checkpoints/`       | Latest resumable checkpoints and per-model run logs                                |
 | `eval/`                     | Evaluation figures, reward CSVs, measurements, and projection coordinates          |
@@ -50,9 +50,20 @@ Generation writes a fresh `datasets/9_hosts` directory. Move existing output asi
 
 Digital Corpora is divided into complete one-second windows and split 80/20 using the provided seed. Each ordered host pair receives a shuffled pool from the appropriate split. The pool is exhausted before windows are reused. Train and test source windows remain disjoint. Megalodon is evaluation-only, with the selected `192.168.1.1` to `172.28.190.238` pair tagged separately from other traffic before pooling.
 
-For `P = n(n-1)` ordered pairs, split size `W` one-second windows, and decision interval `tau`, each pair receives `ceil(D * tau)` seconds, where `D = max(min_decisions, floor(W / (P * tau)))`. The default `min_decisions=20` and `tau=5` produce at least 100 seconds per pair. Longer complete decision sequences use the available unique windows. Repetition fills any shortage.
+For `P = n(n-1)` ordered pairs, split size `W` one-second windows, time scale `X`, and decision interval `tau`, each pair can receive `A = floor(W / P)` unique source windows. These provide `floor(A * X / tau)` decisions after scaling. If that meets `min_decisions`, the available windows are used directly. Otherwise, each pair receives `ceil(min_decisions * tau / X)` source windows, repeating only after exhausting the split. Whole-window rounding ensures the final duration provides at least the requested number of complete decisions. Longer available sequences are retained.
 
-Each generated manifest contains host IDs, MACs, IPv4 addresses, duration, decision interval, decision count, and seed. PCAP manifests identify per-pair captures. Synthetic manifests contain per-second traffic series and scheduled TCP jobs. Both formats produce throughput PNGs showing total Mbps and every direction. IPv4, IPv6, ARP, and transport checksums are adjusted during address rewriting. New network generation reads host metadata from these manifests. Older manifests can recover host information from their companion PCAPs and conventional `h<n>` addresses.
+Set `Config.TRAFFIC_SCALE_FACTOR` in `config.py` to a finite number of at least 1. Its default `None` uses the number of hosts. A factor `X` multiplies every pooled PCAP packet timestamp and the trace duration by `X`, preserving the packet contents and byte count. With nine hosts, five-second decisions, and a minimum of 20 decisions, a short split is extended to 12 source seconds per pair. Scaling those windows produces 108 seconds and 21 complete decisions. Synthetic traffic preserves each source window's byte volume, stretches that window to `X` seconds, and divides its sending rate by `X`. A value of 1 produces the original timing. Synthetic transfer timeouts cover these longer delivery windows.
+
+Each generated manifest contains host IDs, MACs, IPv4 addresses, scaled duration, decision interval, decision count, seed, and the resolved `traffic_scale_factor`. The decision count is calculated from the final scaled duration. PCAP manifests identify per-pair captures and retain actual one-second `mbps_by_second` bins after stretching. Synthetic manifests record `window_seconds` for interpreting their traffic series and scheduled TCP jobs. Each synthetic window's `frame_bytes` is its volume over that whole window, and `average_mbps` includes its duration. Both formats produce throughput PNGs with elapsed seconds, total Mbps, and each direction. IPv4, IPv6, ARP, and transport checksums are adjusted during address rewriting. Network generation reads host metadata directly from the manifests.
+
+`--skip-pcaps` generates synthetic datasets while reading capture statistics directly, skipping both packet spooling and per-pair PCAP output. `--skip-train` generates test datasets only and also applies to the congestion command. Random pools use the seed, split, and capture name, so the same test datasets are generated when either output option is selected.
+
+```sh
+model/.venv/bin/python -m data_preparation default --hosts 50 --skip-pcaps --skip-train
+model/.venv/bin/python -m data_preparation congestion --hosts 50 --network networks/v4.json --skip-train
+```
+
+The test-only output contains DC, Megalodon, and the traffic-load variants. Congestion preparation adds the selected test variants. PCAP-based training and evaluation use the captures produced by a full preparation run.
 
 | Dataset                                         | Split          | Meaning                              |
 | ----------------------------------------------- | -------------- | ------------------------------------ |
@@ -72,6 +83,8 @@ model/.venv/bin/python -m data_preparation congestion --hosts 9 --network networ
 ```
 
 TrEnv 1 is DC T0. TrEnvs 2, 3, and 4 increase traffic originating in the first, second, and third controller domain by 1.5. TrEnv 5 increases traffic from all domains by 1.5. Domain order follows the network's controller list. Congestion preparation checks the host directions against the selected network.
+
+Traffic-load and congestion multipliers apply to the already stretched synthetic data, retaining its window durations and global time scale.
 
 ## Network preparation
 
@@ -121,7 +134,7 @@ Datasets are sent as job lists through the Mininet socket. Switching datasets le
 
 Each decision applies all agent actions, waits for acknowledgments and a fresh telemetry window, then computes rewards. FeatherGraph embeds each domain into `4 * order * eval_points` features and concatenates them in controller order. Default settings produce 12 features for three agents. Training fits normalization on source training traffic and saves it in the checkpoint and inference model.
 
-An episode uses every complete decision interval available after warm-up. After its last decision, `drain_seconds` allows pending delivery under the final forwarding configuration. Completed deliveries contribute FCT measurements. Incomplete deliveries are ignored after draining.
+By default, an episode uses every complete decision interval available after warm-up. After its last decision, `drain_seconds` allows pending delivery under the final forwarding configuration. Completed deliveries contribute FCT measurements. Incomplete deliveries are ignored after draining.
 
 ## Training and resumption
 
@@ -168,7 +181,7 @@ model/.venv/bin/python -m model.train --network v0.json --traffic curriculum --o
 
 `--workers local` keeps learners in-process. The default `process` creates one spawned worker per agent. `--device auto` selects CUDA when available, with `cpu`, `cuda`, and `cuda:N` available explicitly. Loading checkpoints maps tensors through CPU and supports resuming on a different device.
 
-## Five evaluations
+## Six evaluations
 
 All figures and evaluation measurements are written under `eval/`. Models are selected by inference filename from `models/`. Host counts and test dataset paths follow the chosen network. The comparison defaults are `dc_t0`, `dc_pcaps`, and `dc_full`, in that order. `--models` accepts three replacement names for those roles.
 
@@ -177,6 +190,7 @@ All figures and evaluation measurements are written under `eval/`. Models are se
 3. `model.eval_datasets` compares the three models with an all-on baseline on V0. It produces nine grouped bar charts, covering three metrics for each of the source, load, and congestion groups. Source charts have four groups, load charts have three groups, and congestion charts have four groups. Each group has three model bars.
 4. `model.eval_topologies` evaluates DC PCAPs for the currently started topology. After V0 through V4 have been collected, it produces three metric charts with five topology groups. Each invocation also writes `dc_t0_v<n>.csv`, `dc_pcaps_v<n>.csv`, and `dc_full_v<n>.csv` with matching PNGs. Each CSV contains the mean raw episode return across repetitions. Five topologies produce 15 CSVs and 15 reward plots.
 5. `model.eval_pruning` reads `models/dc_t0.csv`, `models/dc_t0_no_pruning.csv`, and `models/dc_t0_static_pruning.csv`. It writes `eval/pruning_reward.png` and `eval/pruning_relative.png`.
+6. `model.eval_switches` runs one episode each for the three models and the all-on baseline on a provided network. `--steps` specifies the exact number of joint decisions. Each point is the number of enabled controllable switches after that decision, calculated as `sum(actions)`. The graph legend includes each method's final count. Outputs default to `eval/switches_<network>.png` and `.json`, with `--name` available to set another prefix. The JSON records counts at every step and the final counts, input hashes, seed, and settings. `--dataset` defaults to `dc_t0` and resolves a prepared test dataset using the network's host count. Each method uses the same seed and traffic schedule. Episodes longer than the dataset include idle time after replay finishes. Switch-count collection uses controller telemetry and skips delivery captures.
 
 ```sh
 model/.venv/bin/python -m model.eval_topology_embeddings --network v0.json --model dc_t0
@@ -184,11 +198,12 @@ model/.venv/bin/python -m model.eval_traffic_embeddings --model dc_t0
 model/.venv/bin/python -m model.eval_datasets --models dc_t0 dc_pcaps dc_full
 model/.venv/bin/python -m model.eval_topologies --network v0.json --models dc_t0 dc_pcaps dc_full
 model/.venv/bin/python -m model.eval_pruning
+model/.venv/bin/python -m model.eval_switches --network v0.json --steps 20 --models dc_t0 dc_pcaps dc_full
 ```
 
 For topology collection, stop both launchers, restart Ryu first and Mininet second with the next JSON, and invoke the two topology commands for that network. V4 automatically uses its larger-host-count test datasets. The final topology collection produces aggregate figures. Redraw saved results with `--plot-only` on either topology evaluation. `--name` selects the output prefix for evaluations 1 through 4.
 
-The model and baseline use identical prepared traffic for each condition. Repetition index `i`, starting at zero, uses `seed + i` for every method. Override `--episodes`, `--repetitions`, and `--seed` on comparison evaluations. Policies remain frozen and use greedy actions. Bar error bars are 90% percentile bootstrap intervals across paired repetitions.
+The dataset and topology comparisons use identical prepared traffic for each condition. Repetition index `i`, starting at zero, uses `seed + i` for every method. Override `--episodes`, `--repetitions`, and `--seed` on those two comparisons. Policies remain frozen and use greedy actions. Bar error bars are 90% percentile bootstrap intervals across paired repetitions.
 
 FCT averages completed payload-delivery times. PCAP completion tracks delivery of unique TCP payload ranges within the prepared replay. Mean power is weighted by measured decision duration. The metrics follow `FCT_gain = 1 - FCT_model / FCT_baseline`, `PS = 1 - power_model / power_baseline`, and `efficiency = (FCT_gain / max_mean_FCT_gain) / (1 - PS)`. The normalization maximum is taken across the three models within each dataset/topology condition. Power-saving bars show `100 * PS`. Metrics with no completed baseline flows or undefined denominators have empty numeric values.
 
@@ -206,4 +221,4 @@ python3 -m unittest discover -s mininet_nets/tests
 ryu_controller/.venv/bin/python -m unittest discover -s ryu_controller/tests
 ```
 
-The notebook is saved with empty outputs and execution counts. Network generation, full capture preparation, training, and evaluation remain explicit notebook or command-line operations. Live forwarding, replay timing, telemetry, and completion measurements are verified during the later Mininet/Ryu integration run.
+Network generation, full capture preparation, training, and evaluation are explicit notebook or command-line operations. Live forwarding, replay timing, telemetry, and completion measurements require a Mininet/Ryu integration run.
