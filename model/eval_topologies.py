@@ -28,7 +28,9 @@ def plot_collected(name: str, models: list[str]) -> None:
         for condition in conditions[1:]
         for key in ("models_sha256", "settings", "base_seed", "episodes", "repetitions")
     ):
-        raise ValueError("Use the same models, settings, seed, and repetition schedule across topologies")
+        raise ValueError(
+            "Use the same models, settings, seed, and repetition schedule across topologies"
+        )
     plot_bars(conditions, models, EVAL / name, topologies=True)
 
 
@@ -47,14 +49,26 @@ def main() -> None:
             parser.error("Supply --network for the currently running topology")
         network = load_network(args.network)
         settings = load_settings(args.settings)
-        dataset = load_dataset(network, "dc_pcap", "test")
-        condition = compare_condition(evaluate_condition(args, network, settings, dataset, args.name), args.models, args.seed)
+        dataset = load_dataset(network, "dc_t0", "test")
+        condition = compare_condition(
+            evaluate_condition(args, network, settings, dataset, args.name),
+            args.models,
+            args.seed,
+        )
         condition["network"] = network.path.stem
         for label, model in zip(MODEL_LABELS, args.models, strict=True):
-            rewards = np.mean([row["episode_rewards"] for row in condition["measurements"][model]], axis=0).tolist()
+            rewards = np.mean(
+                [row["episode_rewards"] for row in condition["measurements"][model]],
+                axis=0,
+            ).tolist()
             save_rewards(EVAL / f"{label}_{network.path.stem}.csv", rewards)
-        write_json(EVAL / f"{args.name}_{network.path.stem}.json", {"models": args.models, "seed": args.seed, "condition": condition})
-        if all((EVAL / f"{args.name}_{topology}.json").exists() for topology in TOPOLOGIES):
+        write_json(
+            EVAL / f"{args.name}_{network.path.stem}.json",
+            {"models": args.models, "seed": args.seed, "condition": condition},
+        )
+        if all(
+            (EVAL / f"{args.name}_{topology}.json").exists() for topology in TOPOLOGIES
+        ):
             plot_collected(args.name, args.models)
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))
