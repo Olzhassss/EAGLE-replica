@@ -18,7 +18,7 @@ import tempfile
 import threading
 from pathlib import Path
 from types import FrameType
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mininet.link import Link
@@ -85,7 +85,7 @@ def build_network(
     scenario: dict[str, Any],
     remote_controller: type[RemoteController],
 ) -> dict[frozenset[str], Link]:
-    """Create switches and host links with the configured OpenFlow port numbers."""
+    """Build the network from scenario (switches, hosts, links)."""
     for controller in scenario["controllers"]:
         network.addController(
             controller["id"],
@@ -136,7 +136,8 @@ class EmulationSession:
             return {"scenario": self.fingerprint}
         if operation == "traffic":
             return self.traffic.start(
-                request["jobs"], request["duration_seconds"],
+                request["jobs"],
+                request["duration_seconds"],
                 measure_flows=request.get("measure_flows", True),
             )
         raise ValueError("Unknown emulation operation")
@@ -228,7 +229,9 @@ def main() -> None:
                     if not args.cli:
                         server.serve_forever(poll_interval=0.25)
                     else:
-                        thread = threading.Thread(target=server.serve_forever, daemon=True)
+                        thread = threading.Thread(
+                            target=server.serve_forever, daemon=True
+                        )
                         thread.start()
                         try:
                             CLI(network)

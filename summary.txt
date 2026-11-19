@@ -11,7 +11,7 @@ Current works limitations:
 2. RL-based solutions are tuned for training envs only, cannot adapt to arbitrary network envs.
 
 Solution -- EAGLE:
-1. Offline network partitioning algo based on Louvain method + custom objective metrics // which metrics?
+1. Offline network partitioning algo based on Louvain method + custom objective metrics
 2. Multiple controllers, all running a local agent. Local agents collaboratively learn a joint policy by sending each other pruned model weights and embeddings. Pruning for saving bandwidth.
 3. Use graph embedding for generalizability: network topology and traffic patterns -> virtual graph -> low-dimensional embedding. Also reduces MARL overhead.
 
@@ -31,7 +31,7 @@ Controller detects failure or congestion //
 Controller for each subnet:
 1. Collects utilization statistics from nodes
 2. Constructs a weighted vgraph. Edge weights reflect load on links.
-3. Encodes vgraph into embedding = state for the agent. This captures congestion.
+3. Agent Encodes vgraph into embedding = state for the agent. This captures congestion.
 4. embedding goes to agent?
 
 Training loop:

@@ -1,7 +1,5 @@
 # EAGLE pipeline
 
-The source reference is Monaco et al., _Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning With EAGLE_, IEEE TNSM 2026, DOI `10.1109/TNSM.2026.3717361`. The local PDF is retained as the research reference. Network variants, split windows, power coefficients, and training budgets in this checkout define a reproducible local experiment.
-
 ## Environments and layout
 
 Run commands from the repository root. Create the learning environment with Python 3.13.
@@ -21,18 +19,18 @@ model/.venv/bin/python -m jupyterlab pipeline.ipynb
 
 Use the [Ryu guide](ryu_controller/README.md) for its Python 3.7 dependencies and the [Mininet guide](mininet_nets/README.md) for system dependencies. The original Python 3.7 application is available in Git revision `2577b26`.
 
-| Location                    | Contents                                                                           |
-| --------------------------- | ---------------------------------------------------------------------------------- |
-| `data_preparation/`         | Capture analysis, split windows, address rewriting, and dataset generation         |
-| `network_preparation/`      | Source V0, V3 extension, random and Zoo graphs, partitioning, and placement        |
-| `networks/`                 | Generated topology JSON and SVG files                                              |
-| `datasets/<n>_hosts/train/` | Source training manifests and PCAP files                                           |
-| `datasets/<n>_hosts/test/`  | Held-out source, Megalodon, load, and congestion manifests                         |
-| `settings/`                 | Default settings and pruning overrides                                             |
+| Location                    | Contents                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| `data_preparation/`         | Capture analysis, split windows, address rewriting, and dataset generation        |
+| `network_preparation/`      | Source V0, V3 extension, random and Zoo graphs, partitioning, and placement       |
+| `networks/`                 | Generated topology JSON and SVG files                                             |
+| `datasets/<n>_hosts/train/` | Source training manifests and PCAP files                                          |
+| `datasets/<n>_hosts/test/`  | Held-out source, Megalodon, load, and congestion manifests                        |
+| `settings/`                 | Default settings and pruning overrides                                            |
 | `model/`                    | Learners, runtime clients, training, measurement, and six evaluation entry points |
-| `models/`                   | Named inference files and training reward CSV/PNG files                            |
-| `models/checkpoints/`       | Latest resumable checkpoints and per-model run logs                                |
-| `eval/`                     | Evaluation figures, reward CSVs, measurements, and projection coordinates          |
+| `models/`                   | Named inference files and training reward CSV/PNG files                           |
+| `models/checkpoints/`       | Latest resumable checkpoints and per-model run logs                               |
+| `eval/`                     | Evaluation figures, reward CSVs, measurements, and projection coordinates         |
 
 Generated networks, datasets, models, and evaluation results are Git-ignored.
 
@@ -179,7 +177,53 @@ The named inference file is saved at `models/<name>`. Its CSV and PNG are `model
 model/.venv/bin/python -m model.train --network v0.json --traffic curriculum --output dc_full --resume
 ```
 
+For additional policy learning on a different prepared dataset, use `--from-checkpoint <source_name>` with `--dataset <dataset_name>` and a new output name:
+
+```sh
+model/.venv/bin/python -m model.train --network v0.json --from-checkpoint dc_t0 --dataset dc_t5 --split test --output dc_t0_t5 --episodes 15
+```
+
+The source resolves to `models/checkpoints/<source_name>.pth`. Post-training restores the full learner state, including optimizers, action RNGs, observation normalization, frozen reward estimators, and the pruning round. It skips calibration and estimator pretraining. The network, embedding, learning, reward, and decision timing settings must match the source. `--episodes` counts additional policy episodes, and the new CSV/PNG contains only those episodes. The command above explicitly uses `datasets/<hosts>_hosts/test/dc_t5.json` for adaptation. T5 therefore serves as adaptation data rather than a held-out test condition. Repeat the same command with `--resume` to continue an interrupted post-training run, keeping the source checkpoint unchanged.
+
+`pipeline.ipynb` post-trains all three source models on T5 before evaluation and selects `dc_t0_t5`, `dc_pcaps_t5`, and `dc_full_t5` for subsequent policy and embedding evaluations. `POSTTRAIN_EPISODES` controls this budget. The pruning comparison retains the original training curves.
+
 `--workers local` keeps learners in-process. The default `process` creates one spawned worker per agent. `--device auto` selects CUDA when available, with `cpu`, `cuda`, and `cuda:N` available explicitly. Loading checkpoints maps tensors through CPU and supports resuming on a different device.
+
+## Interactive simulation with manual traffic
+
+Use three terminals from the repository root. Start Ryu first, then open Mininet with its CLI, then attach one trained policy:
+
+```sh
+# Terminal 1: Ryu (Python 3.7)
+ryu_controller/.venv/bin/python ryu_controller/launch_controllers.py --scenario networks/v0.json
+
+# Terminal 2: Mininet and its interactive prompt (system Python)
+sudo python3 mininet_nets/launch_topology.py --scenario networks/v0.json --cli
+
+# Terminal 3: frozen policy and one-second switch display (Python 3.13)
+model/.venv/bin/python -m model.interactive --network v0.json --model dc_full_t5
+```
+
+`--model` selects a named inference file under `models/`; for example, use `dc_full`, `dc_t0`, or `dc_pcaps` to run an original source model. The saved encoder supplies normalization and controller ordering. This mode checks the Mininet network fingerprint and attaches to current forwarding without resetting Mininet, restarting Ryu, or replaying a dataset. Start traffic whenever ready in Terminal 2.
+
+For example, install `iperf3` on the system if needed (`sudo apt install iperf3`), then enter these commands at the `mininet>` prompt. The background client returns the prompt immediately and stops sending after 30 seconds:
+
+```text
+mininet> h3 iperf3 -s -D -p 5201
+mininet> h1 iperf3 -c 10.0.0.3 -p 5201 -u -b 20M -t 30 > /tmp/eagle-h1-traffic.log 2>&1 &
+```
+
+Repeat the client command with a different `-b` rate or `-t` duration to change the load. To add another host pair concurrently, start another server, for example `h5 iperf3 -s -D -p 5202`, and send from `h7` to `10.0.0.5` on port 5202. Host IPs above match the checked-in V0; use `dump` in Mininet to check addresses if V0 was regenerated from different dataset metadata.
+
+Terminal 3 appends a timestamped status line every second, including the node name, logical controller slot, forwarding state, switch egress rate, and telemetry age. V0 maps `c0` to `s12`, `c1` to `s11`, and `c2` to `s13`. An illustrative line is:
+
+```text
+12:30:01 | s12 (c0)=ON [20.0 Mb/s, age 0.3s] | s11 (c1)=OFF [0.0 Mb/s, age 0.3s] | s13 (c2)=ON [20.0 Mb/s, age 0.3s] | decisions=4
+```
+
+The display continues while controller requests or post-action telemetry are pending. `WAITING` and `STALE` explicitly identify unavailable or old samples; any last known state is labeled. `UNAVAILABLE` means the switch was requested on but is absent from the observed forwarding topology. ON/OFF represents participation in Ryu's forwarding graph; the Mininet switch process continues to exist.
+
+Decisions use `decision_seconds` from `--settings` (five seconds by default), independently of the one-second display. `--decision-seconds 1` requests faster decisions, although each decision still waits for fresh, synchronized post-action telemetry, so the achieved cadence can be slower. A frozen greedy policy may keep the same switch states as traffic changes. Ctrl-C in Terminal 3 stops policy control and leaves its last actions in place; the Mininet CLI and manually started traffic remain under your control. Exit the Mininet CLI and stop Ryu when finished.
 
 ## Six evaluations
 

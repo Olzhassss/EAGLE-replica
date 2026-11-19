@@ -1,14 +1,18 @@
 # EAGLE replica
 
+This project is build largely inspired by Monaco et al., _Adaptive SDN Autoscaling via Generalizable Multi-Agent Reinforcement Learning With EAGLE_, IEEE TNSM 2026, DOI `10.1109/TNSM.2026.3717361`. See the PDF for the whole paper.
+
+Initially forked form the [original authors' repository](https://github.com/dahara98/EAGLE), the codebase has been rewritten to partially satisfy the original methodology with modern Python and prepared evaluation.
+
 EAGLE trains cooperative SDN agents to balance delivered throughput and modeled power. The implementation uses native PyTorch, FeatherGraph observations, and consensus with dynamic pruning enabled by default.
 
 [Documentation.md](Documentation.md) covers preparation, configuration, model artifacts, metrics, and all six evaluations. [pipeline.ipynb](pipeline.ipynb) walks through the complete workflow with visualizations and manual topology changes.
 
-| Component | Runtime | Guide |
-| --- | --- | --- |
-| Network, dataset, training, and evaluation tools | Python 3.13 in `model/.venv` | [Root documentation](Documentation.md) |
-| OpenFlow controllers | Python 3.7 in `ryu_controller/.venv` | [Ryu](ryu_controller/README.md) |
-| Emulation and traffic | System Python 3.10+ with Mininet and Open vSwitch | [Mininet](mininet_nets/README.md) |
+| Component                                        | Runtime                                           | Guide                                  |
+| ------------------------------------------------ | ------------------------------------------------- | -------------------------------------- |
+| Network, dataset, training, and evaluation tools | Python 3.13 in `model/.venv`                      | [Root documentation](Documentation.md) |
+| OpenFlow controllers                             | Python 3.7 in `ryu_controller/.venv`              | [Ryu](ryu_controller/README.md)        |
+| Emulation and traffic                            | System Python 3.10+ with Mininet and Open vSwitch | [Mininet](mininet_nets/README.md)      |
 
 ## Prepare inputs
 
@@ -47,6 +51,19 @@ model/.venv/bin/python -m model.train --network v0.json --traffic curriculum --o
 ```
 
 Training resolves datasets from the network's host count. It calibrates observation normalization on source training traffic, pretrains the reward estimator, and freezes it during policy learning. Output includes `models/<name>`, `models/<name>.csv`, `models/<name>.png`, and `models/checkpoints/<name>.pth`. Use `--settings` for a JSON configuration and `--resume` to continue the same named model.
+
+The notebook also post-trains all three models on `dc_t5` before evaluation. Use `--from-checkpoint <source_name> --dataset dc_t5 --split test --output <new_name> --episodes <additional_episodes>` to restore full training state and continue policy learning with the reward estimator frozen. Post-training saves separate models and reward curves. See `Documentation.md` for resumption details.
+
+## Interactive simulation
+
+Start Ryu with `networks/v0.json` as above. In a second terminal, open Mininet's CLI; in a third, attach a trained policy:
+
+```sh
+sudo python3 mininet_nets/launch_topology.py --scenario networks/v0.json --cli
+model/.venv/bin/python -m model.interactive --network v0.json --model dc_full_t5
+```
+
+Trigger traffic manually at `mininet>` while the policy terminal prints `s12 (c0)`, `s11 (c1)`, and `s13 (c2)` with their observed ON/OFF forwarding states every second. Decisions retain the five-second default cadence. See [the interactive workflow](Documentation.md#interactive-simulation-with-manual-traffic) for traffic commands, timing options, and shutdown behavior.
 
 ## Evaluate
 
