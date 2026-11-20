@@ -20,27 +20,6 @@ from .settings import positive
 from .trials import run_trial
 
 
-def seed_everything(seed: int) -> None:
-    positive(seed, "seed", integer=True, zero=True)
-    random.seed(seed)
-    np.random.seed(seed % (1 << 32))
-    torch.manual_seed(seed)
-
-
-def make_environment(
-    args: argparse.Namespace,
-    network: Scenario,
-    settings: dict,
-    encoder: ObservationEncoder,
-) -> JointEnvironment:
-    return JointEnvironment(
-        network,
-        settings,
-        ControllerClient(network),
-        Emulation(args.mininet_socket, args.ryu_socket),
-        encoder,
-    )
-
 
 def evaluate_condition(
     args: argparse.Namespace,

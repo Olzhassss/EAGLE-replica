@@ -194,3 +194,18 @@ class JointEnvironment:
                 "step_seconds": time.monotonic() - started,
             },
         )
+
+
+def make_environment(
+    args: argparse.Namespace,
+    network: Scenario,
+    settings: dict,
+    encoder: ObservationEncoder,
+) -> JointEnvironment:
+    return JointEnvironment(
+        network,
+        settings,
+        ControllerClient(network),
+        Emulation(args.mininet_socket, args.ryu_socket),
+        encoder,
+    )
