@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Union
 
 import networkx as nx
-
 from network_schema import validate_support_layout
 
 

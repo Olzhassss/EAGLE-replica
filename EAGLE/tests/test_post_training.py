@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import torch
-
 from EAGLE.src.artifacts import read_rewards
 from EAGLE.src.datasets import Dataset
 from EAGLE.src.model.checkpoints import (

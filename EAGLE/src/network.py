@@ -5,8 +5,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from EAGLE.src.paths import ROOT
 from network_schema import validate_support_layout
+
+from EAGLE.src.paths import ROOT
 
 
 @dataclass(frozen=True)

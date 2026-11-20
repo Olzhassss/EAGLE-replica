@@ -1,7 +1,8 @@
 """EAGLE's per-agent actor, critic, and reward estimator networks."""
 
-import torch
 from collections.abc import Sequence
+
+import torch
 from numpy.typing import NDArray
 from torch import nn
 

@@ -9,7 +9,6 @@ from pathlib import Path
 from EAGLE.src.data_preparation.captures import IPPair, capture_packets, ip_pair
 from EAGLE.src.paths import DC_CAPTURE, MG_CAPTURE, ROOT
 
-
 DEFAULT_OUTPUT_DIR = ROOT / "datasets/analyses"
 PLOT_PAIR_LIMIT = 4
 

@@ -4,10 +4,10 @@ import json
 import time
 from typing import Any, Dict
 
-from ryu.app.wsgi import ControllerBase, route
+from network_schema import valid_support_action
 from webob import Request, Response
 
-from network_schema import valid_support_action
+from ryu.app.wsgi import ControllerBase, route
 
 
 def _response(data: object, status: int = 200) -> Response:

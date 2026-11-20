@@ -12,6 +12,11 @@ from random import Random
 from tempfile import TemporaryDirectory
 
 import networkx as nx
+from network_schema import (
+    NETWORK_SCHEMA_VERSION,
+    resolve_support_counts,
+    validate_support_layout,
+)
 
 from EAGLE.src import config
 from EAGLE.src.data_preparation.hosts import dataset_hosts
@@ -24,12 +29,6 @@ from EAGLE.src.network_preparation.placement import (
 )
 from EAGLE.src.network_preparation.plots import save_network_plot
 from EAGLE.src.paths import ROOT, SOURCE_NETWORK
-from network_schema import (
-    NETWORK_SCHEMA_VERSION,
-    resolve_support_counts,
-    validate_support_layout,
-)
-
 
 TOPOLOGY_ZOO = Path(__file__).with_name("topology-zoo")
 BPS_PER_MBPS = 1_000_000

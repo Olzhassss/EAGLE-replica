@@ -3,9 +3,9 @@
 from typing import Any, Dict, List, Tuple, Union
 
 import networkx as nx
+from network_schema import valid_support_action
 
 from ryu.network import Network
-from network_schema import valid_support_action
 
 
 class TopologyState:

@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
-
 from EAGLE.src.arguments import artifact_name
 from EAGLE.src.artifacts import read_rewards
 from EAGLE.src.datasets import DATASET_GROUPS, Dataset, load_dataset
@@ -30,7 +29,6 @@ from EAGLE.src.paths import ROOT, SOURCE_NETWORK
 from EAGLE.src.settings import load_settings
 from EAGLE.src.training.stages import training_stages
 from EAGLE.src.training.train import train
-
 
 SOURCE = SOURCE_NETWORK
 

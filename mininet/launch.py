@@ -15,7 +15,6 @@ from mininet.control_server import ControlRequest, NetworkSession
 from mininet.network import populate_network, validate_network
 from mininet.traffic import TrialTraffic
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

@@ -9,8 +9,6 @@ from pathlib import Path
 from random import Random
 from unittest.mock import patch
 
-from scapy.utils import checksum
-
 from EAGLE.src import config
 from EAGLE.src.data_preparation.captures import capture_packets
 from EAGLE.src.data_preparation.congestion import generate_congestions
@@ -32,6 +30,7 @@ from EAGLE.src.data_preparation.windows import (
 )
 from EAGLE.src.datasets import load_dataset
 from EAGLE.src.network import Network
+from scapy.utils import checksum
 
 
 def _frame(pair: tuple[bytes, bytes], payload: bytes) -> bytes:

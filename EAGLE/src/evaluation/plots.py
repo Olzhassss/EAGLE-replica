@@ -10,7 +10,6 @@ from sklearn.manifold import TSNE
 
 from EAGLE.src.artifacts import read_rewards, write_json
 
-
 METRICS = {
     "fct_gain": "FCT gain",
     "power_saving": "Power saving (%)",

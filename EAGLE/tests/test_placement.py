@@ -3,7 +3,6 @@
 import unittest
 
 import networkx as nx
-
 from EAGLE.src.network_preparation.balanced_louvain import balanced_partitions
 from EAGLE.src.network_preparation.placement import place_controllers
 

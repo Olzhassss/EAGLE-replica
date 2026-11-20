@@ -13,7 +13,6 @@ from EAGLE.src.network import Network
 from EAGLE.src.paths import ROOT
 from EAGLE.src.settings import positive
 
-
 DATASET_GROUPS = {
     "sources": ("dc_t0", "mg_t0"),
     "loads": ("dc_t1", "dc_t3", "dc_t4"),

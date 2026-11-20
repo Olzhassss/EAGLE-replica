@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 import numpy as np
 import torch
-
 from EAGLE.src.communication.socket_commander import SocketCommander
 from EAGLE.src.model.actor_critic import ActorCritic
 from EAGLE.src.model.checkpoints import load_inference_model, save_checkpoint
@@ -20,7 +19,6 @@ from EAGLE.src.model.observations import ObservationEncoder, embed_subnet
 from EAGLE.src.model.reward import compute_reward
 from EAGLE.src.network import load_network
 from EAGLE.src.paths import SOURCE_NETWORK
-
 
 SOURCE = SOURCE_NETWORK
 

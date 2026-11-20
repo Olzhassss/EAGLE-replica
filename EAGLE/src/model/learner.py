@@ -3,6 +3,7 @@
 from typing import Any
 
 import torch
+from network_schema import resolve_support_counts
 from numpy.typing import NDArray
 from torch.distributions import Categorical
 from torch.nn import functional as F
@@ -10,7 +11,6 @@ from torch.nn import functional as F
 from EAGLE.src.model.actor_critic import make_actor, make_value_network
 from EAGLE.src.model.consensus import mix_contributions, pack_contribution
 from EAGLE.src.model.observations import ObservationEncoder
-from network_schema import resolve_support_counts
 
 
 def _cpu_state(value: Any) -> Any:

@@ -15,21 +15,21 @@ each command's options. With `EAGLE/.venv` activated, omit the `uv run` prefix;
 
 ## Source map
 
-| Location in `src/` | Responsibility |
-| --- | --- |
-| `main.py`, `arguments.py` | Lazy command dispatch, shared flags, model names, and device selection |
-| `data_preparation/` | Stream captures, pool one-second windows, rewrite replay packets, and generate synthetic/load/congestion datasets |
-| `network_preparation/` | Normalize switch graphs, partition domains, place controllers and hosts, allocate ports, and draw networks |
-| `model/` | Neural networks, Feather embeddings, normalization, rewards, learner updates, consensus, and checkpoint I/O |
-| `training/` | Episode stages, per-agent local/process workers, calibration, post-training, and resumable runs |
-| `experiments/` | Environment wiring, synchronized joint steps, trial execution, and run/event logs |
-| `communication/` | HTTP controller requests and Unix socket traffic/supervisor commands |
-| `measurement/flows.py` | TCP payload delivery and completion times, accounting for retransmissions |
-| `evaluation/` | Policy comparisons, switch counts, embedding collection, and report plots |
-| `interactive.py` | Apply a frozen policy to manually started traffic while displaying controller status |
-| `network.py`, `datasets.py` | Load prepared inputs, validate dataset hosts/jobs, and compute content fingerprints |
-| `config.py`, `settings.py`, `paths.py`, `artifacts.py` | Preparation constants, experiment settings, repository paths, and atomic output helpers |
-| `../tests/` | Input, numerical, training/resume, inference, and socket protocol regression tests |
+| Location in `src/`                                     | Responsibility                                                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `main.py`, `arguments.py`                              | Lazy command dispatch, shared flags, model names, and device selection                                            |
+| `data_preparation/`                                    | Stream captures, pool one-second windows, rewrite replay packets, and generate synthetic/load/congestion datasets |
+| `network_preparation/`                                 | Normalize switch graphs, partition domains, place controllers and hosts, allocate ports, and draw networks        |
+| `model/`                                               | Neural networks, Feather embeddings, normalization, rewards, learner updates, consensus, and checkpoint I/O       |
+| `training/`                                            | Episode stages, per-agent local/process workers, calibration, post-training, and resumable runs                   |
+| `experiments/`                                         | Environment wiring, synchronized joint steps, trial execution, and run/event logs                                 |
+| `communication/`                                       | HTTP controller requests and Unix socket traffic/supervisor commands                                              |
+| `measurement/flows.py`                                 | TCP payload delivery and completion times, accounting for retransmissions                                         |
+| `evaluation/`                                          | Policy comparisons, switch counts, embedding collection, and report plots                                         |
+| `interactive.py`                                       | Apply a frozen policy to manually started traffic while displaying controller status                              |
+| `network.py`, `datasets.py`                            | Load prepared inputs, validate dataset hosts/jobs, and compute content fingerprints                               |
+| `config.py`, `settings.py`, `paths.py`, `artifacts.py` | Preparation constants, experiment settings, repository paths, and atomic output helpers                           |
+| `../tests/`                                            | Input, numerical, training/resume, inference, and socket protocol regression tests                                |
 
 Preparation defaults are module constants in `EAGLE.src.config`. Runtime learning
 and reward parameters come from [settings presets](../settings/README.md).
@@ -52,11 +52,11 @@ Bit `i` of that controller's integer action enables list element `i`. For a list
 `["s12", "s10"]`, the four actions are:
 
 | Mask | s12 | s10 |
-| --- | --- | --- |
-| 0 | off | off |
-| 1 | on | off |
-| 2 | off | on |
-| 3 | on | on |
+| ---- | --- | --- |
+| 0    | off | off |
+| 1    | on  | off |
+| 2    | off | on  |
+| 3    | on  | on  |
 
 Counts can differ across domains; zero gives a fixed domain with the sole action
 `0`. A domain with `k` support switches has `2^k` actor outputs. The joint action

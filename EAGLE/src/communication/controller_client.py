@@ -8,8 +8,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
 
-from EAGLE.src.network import Network
 from network_schema import valid_support_action
+
+from EAGLE.src.network import Network
 
 
 class ControllerUnavailableError(RuntimeError):

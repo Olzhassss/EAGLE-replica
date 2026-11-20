@@ -11,12 +11,12 @@ from types import TracebackType
 from typing import Any
 
 import torch
+from network_schema import resolve_support_counts
 from numpy.typing import NDArray
 
 from EAGLE.src.model.consensus import pruning_fraction
 from EAGLE.src.model.learner import AgentLearner
 from EAGLE.src.model.observations import ObservationEncoder
-from network_schema import resolve_support_counts
 
 
 def _serve(

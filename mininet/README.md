@@ -19,14 +19,14 @@ validates support-switch ownership, list uniqueness, initial masks, and fixed
 host attachments before Mininet creates nodes. Ryu applies support-switch masks;
 Mininet continues to build all configured switches and links.
 
-| File | Responsibility |
-| --- | --- |
-| `network.py` | Validate command-facing network values and create nodes/links |
-| `launch.py` | Own Mininet, the socket server, and shutdown cleanup |
-| `control_server.py` | Serve `status`, `reset`, `traffic`, and `finish` commands |
-| `traffic.py` | Validate jobs, schedule processes, capture traffic, and drain/stop trials |
-| `traffic_flow.py` | Shared asynchronous TCP receivers, scheduled senders, and timed PCAP replay |
-| `tests/` | Network validation and traffic lifecycle checks without live Mininet |
+| File                | Responsibility                                                              |
+| ------------------- | --------------------------------------------------------------------------- |
+| `network.py`        | Validate command-facing network values and create nodes/links               |
+| `launch.py`         | Own Mininet, the socket server, and shutdown cleanup                        |
+| `control_server.py` | Serve `status`, `reset`, `traffic`, and `finish` commands                   |
+| `traffic.py`        | Validate jobs, schedule processes, capture traffic, and drain/stop trials   |
+| `traffic_flow.py`   | Shared asynchronous TCP receivers, scheduled senders, and timed PCAP replay |
+| `tests/`            | Network validation and traffic lifecycle checks without live Mininet        |
 
 The launcher writes its Unix socket address to `mininet/.socket`.
 EAGLE discovers this file or accepts `--mininet-socket`. Commands carry

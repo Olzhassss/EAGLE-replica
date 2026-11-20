@@ -4,11 +4,9 @@ import time
 from typing import Any, Dict, Union
 
 from ryu.controller.controller import Datapath
-from ryu.ofproto import ofproto_v1_3_parser, ofproto_v1_5, ofproto_v1_5_parser
-
 from ryu.network import Network
+from ryu.ofproto import ofproto_v1_3_parser, ofproto_v1_5, ofproto_v1_5_parser
 from ryu.openflow_rules import COOKIE, COOKIE_MASK, TABLE_ID
-
 
 StatsReply = Union[
     ofproto_v1_3_parser.OFPFlowStatsReply,

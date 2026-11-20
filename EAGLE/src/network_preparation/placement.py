@@ -1,12 +1,12 @@
 """Choose a minimum-hop controller location inside each community."""
 
 from __future__ import annotations
+
 from collections.abc import Iterable
 from itertools import islice, zip_longest
 from typing import Any
 
 import networkx as nx
-
 from network_schema import resolve_support_counts
 
 

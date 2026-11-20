@@ -7,7 +7,6 @@ from tempfile import TemporaryDirectory
 
 from EAGLE.src.data_preparation.synthetic import scale_synthetic
 
-
 SCALE_FACTOR = 1.5
 
 

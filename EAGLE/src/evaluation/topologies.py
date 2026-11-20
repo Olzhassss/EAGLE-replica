@@ -14,7 +14,6 @@ from EAGLE.src.network import load_network
 from EAGLE.src.paths import EVAL
 from EAGLE.src.settings import load_settings
 
-
 TOPOLOGIES = tuple(f"v{index}" for index in range(5))
 
 

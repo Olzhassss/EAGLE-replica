@@ -12,7 +12,6 @@ from EAGLE.src.data_preparation.hosts import Host
 from EAGLE.src.data_preparation.synthetic import write_chart
 from EAGLE.src.data_preparation.windows import PCAP_HEADER, SECOND, Window, write_packet
 
-
 TRANSPORT_CHECKSUM = {6: 16, 17: 6, 58: 2}
 
 

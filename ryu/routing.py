@@ -7,7 +7,6 @@ import networkx as nx
 
 from ryu.network import Network
 
-
 ForwardingRules = Dict[Tuple[str, str], int]
 
 

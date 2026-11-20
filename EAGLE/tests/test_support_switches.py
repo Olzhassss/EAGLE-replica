@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 import networkx as nx
 import numpy as np
 import torch
-
 from EAGLE.src.communication.controller_client import ControllerClient
 from EAGLE.src.datasets import Dataset
 from EAGLE.src.experiments.environment import JointEnvironment

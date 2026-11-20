@@ -16,22 +16,22 @@ JSON. `--controller ID` selects controllers for a deployment across hosts; it
 may be repeated. Configure reachable endpoints and synchronize host clocks for
 telemetry windows and action revisions. Ctrl-C stops managed child processes.
 
-| File | Responsibility |
-| --- | --- |
-| `supervisor.py` | Start, restore, and stop controller processes through a local socket |
-| `eagle_controller.py` | Handle OpenFlow events, peer presence, master roles, reconciliation, and snapshots |
-| `api.py` | Serve HTTP network state, telemetry, and action endpoints |
-| `network.py` | Load the configured graph, host addresses, and port index |
-| `topology_state.py` | Track action revisions, elect logical slot owners, and build active/local graphs |
-| `routing.py` | Select stable shortest host paths, preferring enabled source-domain support switches |
-| `openflow_rules.py` | Reconcile EAGLE-owned rules and request switch roles |
-| `telemetry.py` | Pair complete polls, handle counter resets, and calculate delivered bytes/utilization |
-| `tests/` | Topology, routing, action, counter, and OpenFlow serialization contracts |
+| File                  | Responsibility                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `supervisor.py`       | Start, restore, and stop controller processes through a local socket                  |
+| `eagle_controller.py` | Handle OpenFlow events, peer presence, master roles, reconciliation, and snapshots    |
+| `api.py`              | Serve HTTP network state, telemetry, and action endpoints                             |
+| `network.py`          | Load the configured graph, host addresses, and port index                             |
+| `topology_state.py`   | Track action revisions, elect logical slot owners, and build active/local graphs      |
+| `routing.py`          | Select stable shortest host paths, preferring enabled source-domain support switches  |
+| `openflow_rules.py`   | Reconcile EAGLE-owned rules and request switch roles                                  |
+| `telemetry.py`        | Pair complete polls, handle counter resets, and calculate delivered bytes/utilization |
+| `tests/`              | Topology, routing, action, counter, and OpenFlow serialization contracts              |
 
-| HTTP interface | Result |
-| --- | --- |
-| `GET /network/state` | Peer presence, slot ownership, ports, and action revisions |
-| `GET /network/stats?controller_id=c0` | Coherent slot telemetry; HTTP 503 while unavailable |
+| HTTP interface                                       | Result                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `GET /network/state`                                 | Peer presence, slot ownership, ports, and action revisions             |
+| `GET /network/stats?controller_id=c0`                | Coherent slot telemetry; HTTP 503 while unavailable                    |
 | `PUT /model/actions?controller_id=c0&network=SHA256` | Apply `[mask]` and acknowledge its action revision and acceptance time |
 
 Each logical slot controls the ordered `support_switches` list in its network

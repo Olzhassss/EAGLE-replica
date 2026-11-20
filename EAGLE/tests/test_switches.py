@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import torch
-
 from EAGLE.src.datasets import Dataset
 from EAGLE.src.evaluation.switches import evaluate_switches, main
 from EAGLE.src.experiments.environment import JointEnvironment

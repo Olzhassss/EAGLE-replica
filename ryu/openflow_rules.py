@@ -5,9 +5,7 @@ from typing import Optional, Union
 from ryu.controller.controller import Datapath
 from ryu.ofproto.ofproto_v1_3_parser import OFPPort as OFPPort13
 from ryu.ofproto.ofproto_v1_5_parser import OFPPort as OFPPort15
-
 from ryu.routing import ForwardingRules
-
 
 COOKIE = 0x4541474C45
 COOKIE_MASK = (1 << 64) - 1

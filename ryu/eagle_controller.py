@@ -7,16 +7,15 @@ from typing import Any, Dict, Optional, Union
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
+from ryu.api import EagleApi
 from ryu.app.wsgi import WSGIApplication
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.controller import Datapath
 from ryu.controller.handler import DEAD_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.lib import hub
-from ryu.ofproto import ofproto_v1_3, ofproto_v1_5
-
-from ryu.api import EagleApi
 from ryu.network import load_network
+from ryu.ofproto import ofproto_v1_3, ofproto_v1_5
 from ryu.openflow_rules import (
     apply_forwarding_rules,
     port_is_up,
@@ -26,7 +25,6 @@ from ryu.openflow_rules import (
 from ryu.routing import ForwardingRules, plan_forwarding_rules
 from ryu.telemetry import Telemetry, compute_link_utilization
 from ryu.topology_state import TopologyState
-
 
 OPENFLOW_VERSION = "1.5"
 

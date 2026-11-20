@@ -8,7 +8,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-
 from EAGLE.src.communication.controller_client import (
     ControllerUnavailableError,
     JointActionError,

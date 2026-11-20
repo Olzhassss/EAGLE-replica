@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import networkx as nx
-
 from EAGLE.src import config
 from EAGLE.src.data_preparation.hosts import hosts_for
 from EAGLE.src.network_preparation.graphs import load_switch_graph, random_switch_graph

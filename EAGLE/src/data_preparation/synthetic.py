@@ -8,7 +8,6 @@ from pathlib import Path
 from EAGLE.src.data_preparation.hosts import Host
 from EAGLE.src.data_preparation.windows import Window
 
-
 LOAD_FACTORS = {1: 0.5, 3: 1.5, 4: 2.0}
 
 

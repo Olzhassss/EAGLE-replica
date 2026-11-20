@@ -10,7 +10,6 @@ from typing import BinaryIO
 
 from EAGLE.src.data_preparation.captures import capture_packets, ip_pair
 
-
 SECOND = 1_000_000_000
 MG_PAIR = (inet_aton("192.168.1.1"), inet_aton("172.28.190.238"))
 PCAP_HEADER = struct.pack("<IHHIIII", 0xA1B23C4D, 2, 4, 0, 0, 262144, 1)
