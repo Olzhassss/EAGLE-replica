@@ -137,10 +137,7 @@ class AgentPool(AbstractContextManager):
     def embed(self, topologies: Sequence[dict[str, Any]]) -> list[NDArray]:
         result = self.dispatch(
             "embed",
-            {
-                slot: (graph,)
-                for slot, graph in zip(self.slots, topologies, strict=True)
-            },
+            {slot: (graph,) for slot, graph in zip(self.slots, topologies, strict=True)},
         )
         return [result[slot] for slot in self.slots]
 

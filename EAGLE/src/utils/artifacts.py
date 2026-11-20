@@ -59,7 +59,5 @@ def read_rewards(path: Path) -> tuple[np.ndarray, np.ndarray]:
         or len(set(episodes)) != len(episodes)
         or (np.diff(episodes) <= 0).any()
     ):
-        raise ValueError(
-            f"Expected finite rewards in increasing episode order in {path}"
-        )
+        raise ValueError(f"Expected finite rewards in increasing episode order in {path}")
     return episodes, rewards

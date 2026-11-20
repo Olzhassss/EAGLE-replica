@@ -20,7 +20,6 @@ from .settings import positive
 from .trials import run_trial
 
 
-
 def evaluate_condition(
     args: argparse.Namespace,
     network: Scenario,
@@ -41,9 +40,7 @@ def evaluate_condition(
     positive(repetitions, "repetitions", integer=True)
     if len(set(args.models)) != 3:
         raise ValueError("Specify three distinct model names")
-    loaded = {
-        name: load_inference_model(MODELS / name, network) for name in args.models
-    }
+    loaded = {name: load_inference_model(MODELS / name, network) for name in args.models}
     device = resolve_device(args.device)
     for policy, _ in loaded.values():
         policy.to(device)
@@ -88,9 +85,7 @@ def evaluate_condition(
                     flush=True,
                 )
                 results.append(
-                    run_trial(
-                        environment, decide, log, episode=episode, dataset=dataset
-                    )
+                    run_trial(environment, decide, log, episode=episode, dataset=dataset)
                 )
             count = sum(row["completed_flows"] for row in results)
             measured = sum(row["measured_seconds"] for row in results)
@@ -99,9 +94,7 @@ def evaluate_condition(
                 for row in results
                 if row["fct_seconds"] is not None
             )
-            energy = sum(
-                row["power_watts"] * row["measured_seconds"] for row in results
-            )
+            energy = sum(row["power_watts"] * row["measured_seconds"] for row in results)
             measurements[name].append(
                 {
                     "seed": seed,
@@ -113,9 +106,7 @@ def evaluate_condition(
     return {
         "dataset": dataset.name,
         "dataset_sha256": dataset.fingerprint,
-        "models_sha256": {
-            name: checkpoint_digest(MODELS / name) for name in args.models
-        },
+        "models_sha256": {name: checkpoint_digest(MODELS / name) for name in args.models},
         "settings": settings,
         "base_seed": args.seed,
         "episodes": episodes,

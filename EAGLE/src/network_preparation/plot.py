@@ -27,9 +27,7 @@ def save_network_plot(
         palette = colormaps["tab20"].resampled(len(domains)).colors
     domain_colors = dict(zip(domains, palette))
     placement = {row["placement_switch"]: row["id"] for row in controllers}
-    controllable = {
-        node for row in controllers for node in row["controllable_switches"]
-    }
+    controllable = {node for row in controllers for node in row["controllable_switches"]}
     hosts = {row["id"] for row in scenario["hosts"]}
     graph = nx.Graph()
     graph.add_nodes_from(row["id"] for row in scenario["switches"])
@@ -86,9 +84,7 @@ def save_network_plot(
             linewidths=[2.1 if node in controllable else 0.5 for node in nodes],
         )
         style.append(
-            Line2D(
-                [], [], marker=marker, linestyle="none", color="#80909c", label=label
-            )
+            Line2D([], [], marker=marker, linestyle="none", color="#80909c", label=label)
         )
     if controllable:
         style.append(
@@ -123,9 +119,7 @@ def save_network_plot(
         font_size=font_size,
         font_color="#101820",
     )
-    phase = (
-        f"\nBefore merging · {len(domains)} Louvain communities" if pre_merge else ""
-    )
+    phase = f"\nBefore merging · {len(domains)} Louvain communities" if pre_merge else ""
     axis.set_title(f"{scenario['id']}{phase}\nLink labels in Mbps", pad=10)
     axis.set_axis_off()
     axis.legend(

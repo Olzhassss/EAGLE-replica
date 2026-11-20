@@ -99,9 +99,7 @@ class TrialTraffic:
         senders = defaultdict(list)
         receivers = {}
         try:
-            for target in sorted(
-                {job["target"] for job in jobs if job["kind"] == "tcp"}
-            ):
+            for target in sorted({job["target"] for job in jobs if job["kind"] == "tcp"}):
                 directory = self.directory / target
                 directory.mkdir()
                 receivers[target] = directory

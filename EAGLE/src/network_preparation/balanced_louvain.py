@@ -96,9 +96,7 @@ def partition_domains(
         cutoff=domains,
         best_n=domains,
     )
-    return groups, [
-        set().union(*(groups[index] for index in group)) for group in merged
-    ]
+    return groups, [set().union(*(groups[index] for index in group)) for group in merged]
 
 
 def _move_nodes(

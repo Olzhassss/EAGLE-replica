@@ -20,9 +20,7 @@ def checkpoint_digest(path: Path) -> str:
 def load_checkpoint(path: Path) -> dict[str, Any]:
     """Load tensor and primitive state on CPU."""
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
-    if not isinstance(checkpoint, dict) or not {"encoder", "agents"}.issubset(
-        checkpoint
-    ):
+    if not isinstance(checkpoint, dict) or not {"encoder", "agents"}.issubset(checkpoint):
         raise ValueError("Expected an EAGLE checkpoint with encoder and agent state")
     return checkpoint
 

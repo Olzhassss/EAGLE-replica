@@ -110,9 +110,7 @@ class PostTrainingTests(unittest.TestCase):
         for slot, before in source["agents"].items():
             after = result["agents"][slot]
             for key, value in before["estimator"].items():
-                torch.testing.assert_close(
-                    after["estimator"][key], value, rtol=0, atol=0
-                )
+                torch.testing.assert_close(after["estimator"][key], value, rtol=0, atol=0)
             torch.testing.assert_close(after["action_rng"], before["action_rng"])
             self.assertTrue(
                 any(

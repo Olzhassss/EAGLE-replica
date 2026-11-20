@@ -38,9 +38,7 @@ class NumericalContracts(unittest.TestCase):
         }
         angles = np.array([np.log(4.0) * 0.01, 0.0])
         expected = 0.5 * np.concatenate((np.cos(angles), np.sin(angles)))
-        np.testing.assert_allclose(
-            embed_subnet(graph, order=1, eval_points=1), expected
-        )
+        np.testing.assert_allclose(embed_subnet(graph, order=1, eval_points=1), expected)
 
     def test_reward_uses_delivered_rate_and_modeled_power(self) -> None:
         snapshot = {

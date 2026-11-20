@@ -128,11 +128,7 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(dc_test["decisions"], 20)
             self.assertEqual(len(dc_test["hosts"]), 3)
             train_seconds, test_seconds = (
-                {
-                    w["capture_second"]
-                    for row in profile["series"]
-                    for w in row["windows"]
-                }
+                {w["capture_second"] for row in profile["series"] for w in row["windows"]}
                 for profile in (dc_train, dc_test)
             )
             self.assertEqual((len(train_seconds), len(test_seconds)), (63, 16))
@@ -186,9 +182,7 @@ class DatasetTests(unittest.TestCase):
                 strict=True,
             ):
                 factor = 1.5 if original["source"] == "h1" else 1
-                self.assertEqual(
-                    scaled["windows"][0]["frame_bytes"], len(frame) * factor
-                )
+                self.assertEqual(scaled["windows"][0]["frame_bytes"], len(frame) * factor)
             self.assertEqual(
                 _read(test / "dc_t0_trenv5.json"), _read(test / "dc_t3.json")
             )

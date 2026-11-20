@@ -90,9 +90,7 @@ def load_windows(
 
 def split_dc(windows: list[Window], rng: Random) -> tuple[list[Window], list[Window]]:
     if len(windows) < 2:
-        raise ValueError(
-            "Digital Corpora needs at least two windows for train and test"
-        )
+        raise ValueError("Digital Corpora needs at least two windows for train and test")
     shuffled = rng.sample(windows, len(windows))
     boundary = 4 * len(shuffled) // 5
     return shuffled[:boundary], shuffled[boundary:]

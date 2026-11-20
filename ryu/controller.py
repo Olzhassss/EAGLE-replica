@@ -122,9 +122,8 @@ class EagleController(app_manager.RyuApp):
                 or port not in self.scenario.ports[switch]
             ):
                 return
-            if (
-                message.reason == message.datapath.ofproto.OFPPR_DELETE
-                or not _port_is_up(message.datapath, message.desc)
+            if message.reason == message.datapath.ofproto.OFPPR_DELETE or not _port_is_up(
+                message.datapath, message.desc
             ):
                 self.port_states[switch].discard(port)
             else:

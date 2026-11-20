@@ -200,9 +200,7 @@ def _write_window_outputs(windows: WindowCounts, report: dict, directory: Path) 
     figure = Figure(figsize=(12, 7), layout="constrained")
     FigureCanvasAgg(figure)
     packet_axis, rate_axis = figure.subplots(2, 1, sharex=True)
-    with (directory / "traffic_1s.csv").open(
-        "w", newline="", encoding="utf-8"
-    ) as stream:
+    with (directory / "traffic_1s.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
         writer.writerow(
             (
@@ -241,9 +239,7 @@ def _write_window_outputs(windows: WindowCounts, report: dict, directory: Path) 
             linestyle = "-" if scope == "total" else "--"
             edges = range(len(seconds) + 1)
             if seconds and plot:
-                packet_axis.stairs(
-                    packet_rates, edges, label=label, linestyle=linestyle
-                )
+                packet_axis.stairs(packet_rates, edges, label=label, linestyle=linestyle)
                 rate_axis.stairs(bit_rates, edges, linestyle=linestyle)
 
     title = "Traffic in one-second windows"

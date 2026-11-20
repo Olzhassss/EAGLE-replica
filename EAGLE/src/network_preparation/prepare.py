@@ -214,9 +214,7 @@ def build_scenario(
 def use_dataset_hosts(scenario: dict, hosts: list[dict]) -> dict:
     """Keep topology attachments and take host identities from prepared traffic."""
     if len(hosts) != len(scenario["hosts"]):
-        raise ValueError(
-            f"{scenario['id']} needs {len(scenario['hosts'])} dataset hosts"
-        )
+        raise ValueError(f"{scenario['id']} needs {len(scenario['hosts'])} dataset hosts")
     names = {
         old["id"]: new["id"] for old, new in zip(scenario["hosts"], hosts, strict=True)
     }
@@ -249,9 +247,7 @@ def source_scenario(variant: str, hosts: list[dict], seed: int = Config.SEED) ->
         )
         for number, owner, neighbors in additions:
             node = f"s{number}"
-            scenario["switches"].append(
-                {"id": node, "dpid": number, "controller": owner}
-            )
+            scenario["switches"].append({"id": node, "dpid": number, "controller": owner})
             for neighbor in neighbors:
                 ports[node] += 1
                 ports[neighbor] += 1
@@ -328,9 +324,7 @@ def main() -> None:
 
     try:
         if args.mode in ("v0", "v3"):
-            scenario = source_scenario(
-                args.mode, dataset_hosts(args.dataset), args.seed
-            )
+            scenario = source_scenario(args.mode, dataset_hosts(args.dataset), args.seed)
             print(write_network(scenario, args.output_dir))
             return
         hosts = dataset_hosts(args.dataset) if args.dataset else None
@@ -349,9 +343,7 @@ def main() -> None:
                 if args.topo
                 else sorted(TOPOLOGY_ZOO.glob("*.graphml"))
             )
-            graphs = (
-                (path.stem, path.name, graph) for path, graph in zoo_graphs(paths)
-            )
+            graphs = ((path.stem, path.name, graph) for path, graph in zoo_graphs(paths))
         for name, source, graph in graphs:
             try:
                 scenario = build_scenario(

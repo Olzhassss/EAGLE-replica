@@ -29,9 +29,7 @@ class ControllerContracts(unittest.TestCase):
     def setUp(self) -> None:
         self.scenario = load_scenario(SOURCE)
         self.topology = TopologyState(self.scenario)
-        ports = {
-            name: list(self.scenario.ports[name]) for name in self.scenario.switches
-        }
+        ports = {name: list(self.scenario.ports[name]) for name in self.scenario.switches}
         self.frames = {slot: {"ports": ports} for slot in self.scenario.controllers}
         self.topology.update_presence(self.frames)
 

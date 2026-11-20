@@ -80,8 +80,7 @@ class InteractiveSimulation:
             while not self.stop.is_set():
                 started = time.monotonic()
                 jobs = {
-                    slot: executor.submit(self.client.fetch_stats, slot)
-                    for slot in slots
+                    slot: executor.submit(self.client.fetch_stats, slot) for slot in slots
                 }
                 samples, unavailable = {}, set()
                 for slot, job in jobs.items():
@@ -168,9 +167,7 @@ class InteractiveSimulation:
                 else "UNAVAILABLE"
             )
             if slot in unavailable or age > 3 * self.poll_seconds:
-                state = (
-                    f"{'WAITING' if slot in unavailable else 'STALE'} (last {state})"
-                )
+                state = f"{'WAITING' if slot in unavailable else 'STALE'} (last {state})"
             rate = sample["usage"]["switch_egress_bps"].get(node, 0) / 1_000_000
             fields.append(f"{label}={state} [{rate:.1f} Mb/s, age {age:.1f}s]")
         fields.append(f"decisions={decisions}")
@@ -215,9 +212,7 @@ def run_interactive(args: argparse.Namespace) -> None:
             next_display += 1
             simulation.done.wait(max(0, next_display - time.monotonic()))
     except KeyboardInterrupt:
-        print(
-            "\nStopping policy; the last switch actions remain in effect.", flush=True
-        )
+        print("\nStopping policy; the last switch actions remain in effect.", flush=True)
     finally:
         simulation.stop.set()
         worker.join()

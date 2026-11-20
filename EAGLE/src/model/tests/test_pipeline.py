@@ -56,9 +56,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_curriculum_budget_and_pretraining(self) -> None:
         stages = training_stages("curriculum", 12, 5)
-        self.assertEqual(
-            stages[0]["profiles"], ["dc_t0", *DATASET_GROUPS["congestions"]]
-        )
+        self.assertEqual(stages[0]["profiles"], ["dc_t0", *DATASET_GROUPS["congestions"]])
         self.assertEqual([stage["episodes"] for stage in stages[1:]], [3, 3, 2, 2, 2])
         self.assertTrue(all(stage["mode"] == "frozen" for stage in stages[1:]))
         with self.assertRaises(ValueError):
@@ -211,9 +209,7 @@ class PipelineTests(unittest.TestCase):
             "cumulative_reward": 3,
         }
         with (
-            patch(
-                "model.evaluate.load_inference_model", return_value=(policy, encoder)
-            ),
+            patch("model.evaluate.load_inference_model", return_value=(policy, encoder)),
             patch("model.evaluate.checkpoint_digest", return_value="digest"),
             patch("model.evaluate.seed_everything") as seed,
             patch("model.evaluate.make_environment"),
@@ -265,9 +261,7 @@ class PipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             settings = root / "settings.json"
-            settings.write_text(
-                json.dumps({"embedding": {"normalization": "identity"}})
-            )
+            settings.write_text(json.dumps({"embedding": {"normalization": "identity"}}))
             args = argparse.Namespace(
                 network="v0.json",
                 traffic="curriculum",

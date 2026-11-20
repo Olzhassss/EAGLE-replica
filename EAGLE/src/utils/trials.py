@@ -111,9 +111,7 @@ def run_trial(
         "episode": episode,
         "cumulative_reward": cumulative,
         "power_watts": energy / elapsed if elapsed else None,
-        "fct_seconds": mean(row["fct_seconds"] for row in complete)
-        if complete
-        else None,
+        "fct_seconds": mean(row["fct_seconds"] for row in complete) if complete else None,
         "completed_flows": len(complete),
         "measured_seconds": elapsed,
         "wall_seconds": time.monotonic() - started,

@@ -71,8 +71,7 @@ class JointEnvironment:
         with ThreadPoolExecutor(max_workers=len(self.slots)) as executor:
             while time.monotonic() < deadline:
                 jobs = [
-                    executor.submit(self.client.fetch_stats, slot)
-                    for slot in self.slots
+                    executor.submit(self.client.fetch_stats, slot) for slot in self.slots
                 ]
                 try:
                     rows = [job.result() for job in jobs]
@@ -142,8 +141,7 @@ class JointEnvironment:
             measure_flows=measure_flows,
         )
         starts = (
-            self.traffic.get("started_at", time.time())
-            + self.settings["warmup_seconds"]
+            self.traffic.get("started_at", time.time()) + self.settings["warmup_seconds"]
         )
         time.sleep(max(0.0, starts - time.time()))
         self.snapshots = self._wait_for_samples(starts, actions)

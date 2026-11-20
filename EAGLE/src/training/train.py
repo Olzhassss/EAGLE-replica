@@ -60,14 +60,10 @@ def _train(args: argparse.Namespace) -> None:
                     f"Post-training requires the source checkpoint's {key} settings"
                 )
         pretraining = sum(
-            stage["episodes"]
-            for stage in source["stages"]
-            if stage["mode"] == "pretrain"
+            stage["episodes"] for stage in source["stages"] if stage["mode"] == "pretrain"
         )
         if source["completed_episodes"] < pretraining:
-            raise ValueError(
-                "Complete reward-estimator pretraining before post-training"
-            )
+            raise ValueError("Complete reward-estimator pretraining before post-training")
         positive(settings["training"]["episodes"], "episodes", integer=True)
         stages = [
             {
@@ -219,9 +215,7 @@ def _train(args: argparse.Namespace) -> None:
                         )
                     }
                     metrics = agents.run_round(round_number, stage["mode"], transitions)
-                    log.write(
-                        "learning", episode=episode, stage=stage["name"], **metrics
-                    )
+                    log.write("learning", episode=episode, stage=stage["name"], **metrics)
                     batch.clear()
 
                 def collect(transition: dict) -> None:

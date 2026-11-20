@@ -202,9 +202,7 @@ def rewrite_frame(data: bytes, source: Host, target: Host) -> bytes:
         and frame[offset : offset + 6] == b"\x00\x01\x08\x00\x06\x04"
         and len(frame) >= offset + 28
     ):
-        frame[offset + 8 : offset + 28] = (
-            source.mac + source.ip + target.mac + target.ip
-        )
+        frame[offset + 8 : offset + 28] = source.mac + source.ip + target.mac + target.ip
     elif ethertype == b"\x86\xdd" and len(frame) >= offset + 40:
         _ipv6(frame, offset, source, target)
     return bytes(frame)

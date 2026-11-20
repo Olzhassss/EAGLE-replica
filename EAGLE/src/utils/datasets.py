@@ -71,11 +71,7 @@ def load_dataset(
             f"Host identities or addresses in {path} differ from {network.path.name}"
         )
     duration = data["duration_seconds"]
-    if (
-        type(duration) not in (int, float)
-        or not math.isfinite(duration)
-        or duration <= 0
-    ):
+    if type(duration) not in (int, float) or not math.isfinite(duration) or duration <= 0:
         raise ValueError(f"Invalid duration in {path}")
     jobs = data.get("jobs")
     if jobs is None:

@@ -70,9 +70,7 @@ class SwitchEvaluationTests(unittest.TestCase):
                     "model.eval_switches.load_inference_model",
                     side_effect=[(policy, encoder) for policy in policies],
                 ),
-                patch(
-                    "model.eval_switches.checkpoint_digest", return_value="model-hash"
-                ),
+                patch("model.eval_switches.checkpoint_digest", return_value="model-hash"),
                 patch("model.eval_switches.make_environment"),
                 patch("model.eval_switches.RunLog"),
                 patch("model.eval_switches.seed_everything") as seed,
@@ -159,9 +157,7 @@ class SwitchEvaluationTests(unittest.TestCase):
         environment.emulation.start_traffic.return_value = {"started_at": 0}
         dataset = Dataset(Path("dc_t0.json"), 5, [], "traffic-hash")
         with (
-            patch.object(
-                environment, "_apply", return_value={"c0": {"accepted_at": 0}}
-            ),
+            patch.object(environment, "_apply", return_value={"c0": {"accepted_at": 0}}),
             patch.object(environment, "_wait_for_samples", return_value=[]),
             patch.object(environment, "_observe", return_value=({}, [])),
             patch("model.joint_environment.time.sleep"),
@@ -173,9 +169,7 @@ class SwitchEvaluationTests(unittest.TestCase):
 
     def test_cli_requires_network_and_steps_and_selects_default_models(self) -> None:
         with (
-            patch(
-                "sys.argv", ["eval_switches", "--network", "v0.json", "--steps", "20"]
-            ),
+            patch("sys.argv", ["eval_switches", "--network", "v0.json", "--steps", "20"]),
             patch("model.eval_switches.evaluate_switches") as evaluate,
         ):
             main()

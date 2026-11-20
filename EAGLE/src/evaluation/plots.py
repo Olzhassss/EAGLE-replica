@@ -78,9 +78,7 @@ def compare_condition(condition: dict, models: list[str], seed: int) -> dict:
             if trial["seed"] != reference["seed"]:
                 raise ValueError("A comparison requires matching repetition seeds")
             gains.append(relative_gain(trial["fct_seconds"], reference["fct_seconds"]))
-            savings.append(
-                relative_gain(trial["power_watts"], reference["power_watts"])
-            )
+            savings.append(relative_gain(trial["power_watts"], reference["power_watts"]))
         values[name] = {"fct_gain": gains, "power_saving": savings}
     averages = []
     for metrics in values.values():
@@ -167,9 +165,7 @@ def plot_bars(
 def plot_embeddings(samples: list[dict], target: Path, seed: int) -> None:
     vectors = np.asarray([sample["embedding"] for sample in samples], dtype=float)
     if vectors.ndim != 2 or len(vectors) < 3 or not np.isfinite(vectors).all():
-        raise ValueError(
-            "t-SNE requires at least three finite embeddings of equal width"
-        )
+        raise ValueError("t-SNE requires at least three finite embeddings of equal width")
     projection = TSNE(
         n_components=2,
         perplexity=min(30, max(1, (len(vectors) - 1) / 3)),

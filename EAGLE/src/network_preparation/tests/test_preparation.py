@@ -138,9 +138,7 @@ class PreparationTests(unittest.TestCase):
         LOUVAIN_RESOLUTION=0.1,
     )
     def test_config_supports_multiple_controllable_switches_per_domain(self) -> None:
-        graph = nx.convert_node_labels_to_integers(
-            nx.barbell_graph(5, 0), first_label=1
-        )
+        graph = nx.convert_node_labels_to_integers(nx.barbell_graph(5, 0), first_label=1)
         scenario = build_scenario("barbell", graph, 6, "fixture")
         self.assertEqual(len(scenario["controllers"]), 2)
         for controller in scenario["controllers"]:
