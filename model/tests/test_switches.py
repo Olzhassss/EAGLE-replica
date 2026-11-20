@@ -23,9 +23,16 @@ from model.trials import run_trial
 class SwitchEvaluationTests(unittest.TestCase):
     def arguments(self, **updates) -> argparse.Namespace:
         values = dict(
-            network="v3.json", steps=3, models=["first", "second", "third"],
-            dataset="dc_pcap", name=None, seed=123, settings=DEFAULT_SETTINGS,
-            device="cpu", mininet_socket=None, ryu_socket=None,
+            network="v3.json",
+            steps=3,
+            models=["first", "second", "third"],
+            dataset="dc_pcap",
+            name=None,
+            seed=123,
+            settings=DEFAULT_SETTINGS,
+            device="cpu",
+            mininet_socket=None,
+            ryu_socket=None,
         )
         return argparse.Namespace(**dict(values, **updates))
 
@@ -55,25 +62,42 @@ class SwitchEvaluationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
-            with patch("model.eval_switches.EVAL", output), \
-                 patch("model.eval_switches.load_network", return_value=network), \
-                 patch("model.eval_switches.load_dataset", return_value=dataset) as load, \
-                 patch("model.eval_switches.load_inference_model", side_effect=[(policy, encoder) for policy in policies]), \
-                 patch("model.eval_switches.checkpoint_digest", return_value="model-hash"), \
-                 patch("model.eval_switches.make_environment"), \
-                 patch("model.eval_switches.RunLog"), \
-                 patch("model.eval_switches.seed_everything") as seed, \
-                 patch("model.eval_switches.run_trial", side_effect=trial) as run:
+            with (
+                patch("model.eval_switches.EVAL", output),
+                patch("model.eval_switches.load_network", return_value=network),
+                patch("model.eval_switches.load_dataset", return_value=dataset) as load,
+                patch(
+                    "model.eval_switches.load_inference_model",
+                    side_effect=[(policy, encoder) for policy in policies],
+                ),
+                patch(
+                    "model.eval_switches.checkpoint_digest", return_value="model-hash"
+                ),
+                patch("model.eval_switches.make_environment"),
+                patch("model.eval_switches.RunLog"),
+                patch("model.eval_switches.seed_everything") as seed,
+                patch("model.eval_switches.run_trial", side_effect=trial) as run,
+            ):
                 report = evaluate_switches(self.arguments())
             expected = {
-                "baseline": [3, 3, 3], "first": [2, 1, 0],
-                "second": [0, 2, 3], "third": [3, 1, 1],
+                "baseline": [3, 3, 3],
+                "first": [2, 1, 0],
+                "second": [0, 2, 3],
+                "third": [3, 1, 1],
             }
             self.assertEqual(report["enabled_switches"], expected)
-            self.assertEqual(report["final_enabled_switches"], {
-                "baseline": 3, "first": 0, "second": 3, "third": 1,
-            })
-            self.assertEqual(json.loads((output / "switches_v3.json").read_text()), report)
+            self.assertEqual(
+                report["final_enabled_switches"],
+                {
+                    "baseline": 3,
+                    "first": 0,
+                    "second": 3,
+                    "third": 1,
+                },
+            )
+            self.assertEqual(
+                json.loads((output / "switches_v3.json").read_text()), report
+            )
             self.assertTrue((output / "switches_v3.png").is_file())
         load.assert_called_once_with(network, "dc_pcap", "test")
         self.assertEqual(seed.call_args_list, [call(123)] * 4)
@@ -83,7 +107,9 @@ class SwitchEvaluationTests(unittest.TestCase):
 
     def test_invalid_counts_and_model_names_fail_before_runtime_access(self) -> None:
         invalid = [
-            {"steps": 0}, {"steps": -1}, {"steps": 1.5},
+            {"steps": 0},
+            {"steps": -1},
+            {"steps": 1.5},
             {"models": ["first", "first", "second"]},
             {"models": ["baseline", "first", "second"]},
             {"models": ["first", "second"]},
@@ -100,7 +126,8 @@ class SwitchEvaluationTests(unittest.TestCase):
         observation = {"global_obs": np.zeros(12)}
         environment.reset.return_value = observation, {}
         info = {
-            "step_seconds": 5, "raw_embedding": [0.0] * 12,
+            "step_seconds": 5,
+            "raw_embedding": [0.0] * 12,
             "reward_components": [{"power_watts": 1, "total_delivered_bps": 0}],
         }
         environment.step.side_effect = [
@@ -110,8 +137,13 @@ class SwitchEvaluationTests(unittest.TestCase):
         dataset = Dataset(Path("dc_t0.json"), 5, [], "traffic-hash")
         with patch("model.trials.collect_flow_records", return_value=[]):
             result = run_trial(
-                environment, lambda _: [1, 0, 1], MagicMock(), episode=1,
-                dataset=dataset, steps=3, measure_flows=False,
+                environment,
+                lambda _: [1, 0, 1],
+                MagicMock(),
+                episode=1,
+                dataset=dataset,
+                steps=3,
+                measure_flows=False,
             )
         self.assertEqual(environment.step.call_count, 3)
         self.assertEqual(result["cumulative_reward"], 3)
@@ -121,21 +153,31 @@ class SwitchEvaluationTests(unittest.TestCase):
     def test_reset_uses_explicit_horizon_and_preserves_dataset_default(self) -> None:
         network = self.network()
         encoder = ObservationEncoder(network.controller_ids, 1, 1)
-        environment = JointEnvironment(network, load_settings(), MagicMock(), MagicMock(), encoder)
+        environment = JointEnvironment(
+            network, load_settings(), MagicMock(), MagicMock(), encoder
+        )
         environment.emulation.start_traffic.return_value = {"started_at": 0}
         dataset = Dataset(Path("dc_t0.json"), 5, [], "traffic-hash")
-        with patch.object(environment, "_apply", return_value={"c0": {"accepted_at": 0}}), \
-             patch.object(environment, "_wait_for_samples", return_value=[]), \
-             patch.object(environment, "_observe", return_value=({}, [])), \
-             patch("model.joint_environment.time.sleep"):
+        with (
+            patch.object(
+                environment, "_apply", return_value={"c0": {"accepted_at": 0}}
+            ),
+            patch.object(environment, "_wait_for_samples", return_value=[]),
+            patch.object(environment, "_observe", return_value=({}, [])),
+            patch("model.joint_environment.time.sleep"),
+        ):
             environment.reset(dataset, steps=3, measure_flows=False)
             self.assertEqual(environment.settings["episode_steps"], 3)
             environment.reset(dataset, measure_flows=False)
             self.assertEqual(environment.settings["episode_steps"], 1)
 
     def test_cli_requires_network_and_steps_and_selects_default_models(self) -> None:
-        with patch("sys.argv", ["eval_switches", "--network", "v0.json", "--steps", "20"]), \
-             patch("model.eval_switches.evaluate_switches") as evaluate:
+        with (
+            patch(
+                "sys.argv", ["eval_switches", "--network", "v0.json", "--steps", "20"]
+            ),
+            patch("model.eval_switches.evaluate_switches") as evaluate,
+        ):
             main()
         args = evaluate.call_args.args[0]
         self.assertEqual(args.steps, 20)

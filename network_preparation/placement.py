@@ -99,8 +99,17 @@ def assign_hosts(
     ]
     capacity = sum(map(len, eligible))
     if hosts > capacity:
-        raise ValueError(f"{hosts} hosts requested but only {capacity} access switches are available")
-    return list(islice(
-        (node for batch in zip_longest(*eligible) for node in batch if node is not None),
-        hosts,
-    ))
+        raise ValueError(
+            f"{hosts} hosts requested but only {capacity} access switches are available"
+        )
+    return list(
+        islice(
+            (
+                node
+                for batch in zip_longest(*eligible)
+                for node in batch
+                if node is not None
+            ),
+            hosts,
+        )
+    )

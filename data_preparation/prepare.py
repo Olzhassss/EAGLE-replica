@@ -46,7 +46,9 @@ def prepare_datasets(
         or not math.isfinite(time_scale)
         or time_scale < 1
     ):
-        raise ValueError("TRAFFIC_SCALE_FACTOR must be at least 1, or None to use the host count")
+        raise ValueError(
+            "TRAFFIC_SCALE_FACTOR must be at least 1, or None to use the host count"
+        )
     pairs = list(permutations(hosts_for(hosts, None), 2))
     if output.exists():
         raise FileExistsError(f"{output} already exists")
@@ -66,35 +68,53 @@ def prepare_datasets(
                 if math.floor(seconds * time_scale / decision_seconds) < min_decisions:
                     seconds += 1
             pools = pool_windows(
-                windows, len(pairs), seconds, Random(f"{seed}:{split}:{name}"),
+                windows,
+                len(pairs),
+                seconds,
+                Random(f"{seed}:{split}:{name}"),
             )
             if not skip_pcaps:
                 generate_pcap_dataset(
-                    staging / split / f"{name}_pcap.json", pools, pairs, time_scale=time_scale,
+                    staging / split / f"{name}_pcap.json",
+                    pools,
+                    pairs,
+                    time_scale=time_scale,
                 )
             generate_synthetic_dataset(
-                staging / split / f"{name}_t0.json", pools, pairs, time_scale=time_scale,
+                staging / split / f"{name}_t0.json",
+                pools,
+                pairs,
+                time_scale=time_scale,
             )
             for kind in kinds:
                 path = staging / split / f"{name}_{kind}.json"
                 data = json.loads(path.read_text())
                 data.update(
                     decision_seconds=decision_seconds,
-                    decisions=math.floor(data["duration_seconds"] / decision_seconds), seed=seed,
+                    decisions=math.floor(data["duration_seconds"] / decision_seconds),
+                    seed=seed,
                 )
                 path.write_text(json.dumps(data, indent=2) + "\n")
 
         with TemporaryDirectory(dir=temporary) as spool:
             train, test = split_dc(
-                load_windows(dc, Path(spool) / "dc", store_packets=not skip_pcaps), Random(seed),
+                load_windows(dc, Path(spool) / "dc", store_packets=not skip_pcaps),
+                Random(seed),
             )
             if not skip_train:
                 write("train", "dc", train)
             write("test", "dc", test)
         with TemporaryDirectory(dir=temporary) as spool:
-            write("test", "mg", load_windows(
-                mg, Path(spool) / "mg", megalodon=True, store_packets=not skip_pcaps,
-            ))
+            write(
+                "test",
+                "mg",
+                load_windows(
+                    mg,
+                    Path(spool) / "mg",
+                    megalodon=True,
+                    store_packets=not skip_pcaps,
+                ),
+            )
         generate_loads(staging / "test")
         staging.rename(output)
 
@@ -111,7 +131,9 @@ def main() -> None:
     for command in (base, congestion):
         command.add_argument("--hosts", type=int, required=True)
         command.add_argument("--output-dir", type=Path, default=ROOT / "datasets")
-        command.add_argument("--skip-train", action="store_true", help="Generate test datasets only")
+        command.add_argument(
+            "--skip-train", action="store_true", help="Generate test datasets only"
+        )
     base.add_argument(
         "--dc", type=Path, default=DC_CAPTURE, help="Digital Corpora capture"
     )
@@ -122,7 +144,9 @@ def main() -> None:
     base.add_argument("--decision-seconds", type=float, default=Config.DECISION_SECONDS)
     base.add_argument("--seed", type=int, default=Config.SEED)
     base.add_argument(
-        "--skip-pcaps", action="store_true", help="Generate synthetic datasets without spooling packets",
+        "--skip-pcaps",
+        action="store_true",
+        help="Generate synthetic datasets without spooling packets",
     )
     congestion.add_argument(
         "--network", type=Path, required=True, help="Partitioned scenario JSON"
@@ -145,7 +169,9 @@ def main() -> None:
                 skip_train=args.skip_train,
             )
         else:
-            generate_congestions(args.network, output, args.hosts, skip_train=args.skip_train)
+            generate_congestions(
+                args.network, output, args.hosts, skip_train=args.skip_train
+            )
     except (OSError, ValueError, KeyError, EOFError) as error:
         parser.error(str(error))
     print(output)

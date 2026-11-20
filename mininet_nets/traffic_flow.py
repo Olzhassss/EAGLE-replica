@@ -13,10 +13,14 @@ PORT = 20000
 
 
 async def before_deadline(awaitable, deadline: float):
-    return await asyncio.wait_for(awaitable, timeout=max(0.0, deadline - time.monotonic()))
+    return await asyncio.wait_for(
+        awaitable, timeout=max(0.0, deadline - time.monotonic())
+    )
 
 
-async def receive(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, directory: Path) -> None:
+async def receive(
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, directory: Path
+) -> None:
     job_id = None
     received = 0
     first = completed = None
@@ -31,7 +35,8 @@ async def receive(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, di
         deadline = time.monotonic() + job["timeout_seconds"]
         while received < job["size_bytes"]:
             data = await before_deadline(
-                reader.read(min(65536, job["size_bytes"] - received)), deadline,
+                reader.read(min(65536, job["size_bytes"] - received)),
+                deadline,
             )
             if not data:
                 break
@@ -44,15 +49,24 @@ async def receive(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, di
     finally:
         writer.close()
         if job_id is not None and job.get("measure_flows", True):
-            (directory / (job_id + ".received.json")).write_text(json.dumps({
-                "first_byte_at": first, "completed_at": completed, "received_bytes": received,
-            }))
+            (directory / (job_id + ".received.json")).write_text(
+                json.dumps(
+                    {
+                        "first_byte_at": first,
+                        "completed_at": completed,
+                        "received_bytes": received,
+                    }
+                )
+            )
 
 
 async def serve(directory: Path) -> None:
     server = await asyncio.start_server(
         lambda reader, writer: receive(reader, writer, directory),
-        "0.0.0.0", PORT, backlog=512, limit=4096,
+        "0.0.0.0",
+        PORT,
+        backlog=512,
+        limit=4096,
     )
     async with server:
         (directory / "ready").touch()
@@ -67,14 +81,16 @@ async def send(job: dict, directory: Path) -> None:
     writer = None
     try:
         deadline = time.monotonic() + job["timeout_seconds"]
-        _, writer = await before_deadline(asyncio.open_connection(job["address"], PORT), deadline)
+        _, writer = await before_deadline(
+            asyncio.open_connection(job["address"], PORT), deadline
+        )
         header = {key: job[key] for key in ("id", "size_bytes", "timeout_seconds")}
         header["measure_flows"] = job.get("measure_flows", True)
         writer.write(json.dumps(header).encode() + b"\n")
         await before_deadline(writer.drain(), deadline)
         payload = bytes(65536)
         while sent < job["size_bytes"]:
-            block = payload[:min(len(payload), job["size_bytes"] - sent)]
+            block = payload[: min(len(payload), job["size_bytes"] - sent)]
             writer.write(block)
             await before_deadline(writer.drain(), deadline)
             sent += len(block)
@@ -91,9 +107,15 @@ async def send(job: dict, directory: Path) -> None:
             except (OSError, asyncio.TimeoutError):
                 pass
         if job.get("measure_flows", True):
-            (directory / (job["id"] + ".sent.json")).write_text(json.dumps({
-                "started_at": started, "sent_bytes": sent, "error": error,
-            }))
+            (directory / (job["id"] + ".sent.json")).write_text(
+                json.dumps(
+                    {
+                        "started_at": started,
+                        "sent_bytes": sent,
+                        "error": error,
+                    }
+                )
+            )
 
 
 async def batch(path: Path, directory: Path) -> None:

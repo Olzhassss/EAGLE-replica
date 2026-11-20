@@ -8,7 +8,9 @@ from typing import Any
 from .scenario import ROOT
 
 
-def _socket_address(override: Path | str | None, address_file: Path | None) -> Path | None:
+def _socket_address(
+    override: Path | str | None, address_file: Path | None
+) -> Path | None:
     if override is not None:
         return Path(override)
     if address_file is None:
@@ -22,7 +24,9 @@ def _socket_address(override: Path | str | None, address_file: Path | None) -> P
     return Path(address)
 
 
-def unix_command(path: Path | str | None, operation: str, *, timeout: float = 300, **arguments: Any) -> Any:
+def unix_command(
+    path: Path | str | None, operation: str, *, timeout: float = 300, **arguments: Any
+) -> Any:
     if path is None:
         raise ValueError("A control socket is required for " + operation)
     payload = json.dumps(dict(arguments, operation=operation)).encode() + b"\n"
@@ -62,12 +66,24 @@ class Emulation:
         unix_command(self.mininet_socket, "reset")
 
     def start_traffic(
-        self, jobs: list[dict], duration: float, *, measure_flows: bool = True,
+        self,
+        jobs: list[dict],
+        duration: float,
+        *,
+        measure_flows: bool = True,
     ) -> dict[str, Any]:
         return unix_command(
-            self.mininet_socket, "traffic", jobs=jobs,
-            duration_seconds=duration, measure_flows=measure_flows,
+            self.mininet_socket,
+            "traffic",
+            jobs=jobs,
+            duration_seconds=duration,
+            measure_flows=measure_flows,
         )
 
     def finish_traffic(self, drain_seconds: float = 0) -> dict[str, Any]:
-        return unix_command(self.mininet_socket, "finish", drain_seconds=drain_seconds, timeout=drain_seconds + 300)
+        return unix_command(
+            self.mininet_socket,
+            "finish",
+            drain_seconds=drain_seconds,
+            timeout=drain_seconds + 300,
+        )

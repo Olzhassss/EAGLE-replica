@@ -24,7 +24,12 @@ class InteractiveTests(unittest.TestCase):
         self.policy.decide.return_value = np.array([0, 1, 0])
         self.client = MagicMock()
         self.simulation = InteractiveSimulation(
-            self.network, self.policy, self.encoder, self.client, 5, 15,
+            self.network,
+            self.policy,
+            self.encoder,
+            self.client,
+            5,
+            15,
         )
 
     def samples(self, actions=(1, 1, 1), sampled_at=None):
@@ -39,7 +44,9 @@ class InteractiveTests(unittest.TestCase):
                 "window_start": sampled_at - 1,
                 "resources": copy.deepcopy(resources),
                 "topology": {
-                    "nodes": [{"id": row["support_switch"]}] if resources[row["id"]]["action"] else [],
+                    "nodes": [{"id": row["support_switch"]}]
+                    if resources[row["id"]]["action"]
+                    else [],
                     "links": [],
                 },
                 "usage": {"switch_egress_bps": {row["support_switch"]: 2_000_000}},
@@ -48,11 +55,19 @@ class InteractiveTests(unittest.TestCase):
         }
 
     def arguments(self, **updates):
-        return argparse.Namespace(**dict({
-            "network": "v0.json", "model": "dc_full", "device": "cpu",
-            "settings": DEFAULT_SETTINGS, "mininet_socket": None,
-            "decision_seconds": None,
-        }, **updates))
+        return argparse.Namespace(
+            **dict(
+                {
+                    "network": "v0.json",
+                    "model": "dc_full",
+                    "device": "cpu",
+                    "settings": DEFAULT_SETTINGS,
+                    "mininet_socket": None,
+                    "decision_seconds": None,
+                },
+                **updates,
+            )
+        )
 
     def test_reads_slot_ordered_observations_and_only_sends_policy_actions(self):
         samples = self.samples()
@@ -70,20 +85,27 @@ class InteractiveTests(unittest.TestCase):
         self.simulation.run()
         self.assertIsNone(self.simulation.error)
         self.assertEqual(self.simulation.decisions, 1)
-        self.assertEqual(self.client.apply_actions.call_args.args[0], {"c0": 0, "c1": 1, "c2": 0})
-        raw = np.concatenate([
-            self.encoder.embed_local(samples[slot]["topology"])
-            for slot in self.network.controller_ids
-        ])
+        self.assertEqual(
+            self.client.apply_actions.call_args.args[0], {"c0": 0, "c1": 1, "c2": 0}
+        )
+        raw = np.concatenate(
+            [
+                self.encoder.embed_local(samples[slot]["topology"])
+                for slot in self.network.controller_ids
+            ]
+        )
         np.testing.assert_array_equal(
-            self.policy.decide.call_args.args[0]["global_obs"], self.encoder.normalize(raw),
+            self.policy.decide.call_args.args[0]["global_obs"],
+            self.encoder.normalize(raw),
         )
 
     def test_rejects_stale_inconsistent_and_pre_action_windows(self):
         rows = list(self.samples().values())
         self.assertTrue(self.simulation._ready(rows, {}, 0))
         self.assertFalse(self.simulation._ready(rows[:-1], {}, 0))
-        self.assertFalse(self.simulation._ready(list(self.samples(sampled_at=0).values()), {}, 0))
+        self.assertFalse(
+            self.simulation._ready(list(self.samples(sampled_at=0).values()), {}, 0)
+        )
         self.assertFalse(self.simulation._ready(rows, {}, time.time()))
         ack = {"c0": {"action": 0, "revision": [2, "c0"]}}
         self.assertFalse(self.simulation._ready(rows, ack, 0))
@@ -129,7 +151,9 @@ class InteractiveTests(unittest.TestCase):
         self.assertIsInstance(self.simulation.error, JointActionError)
 
     def test_unavailable_telemetry_times_out_without_applying_actions(self):
-        self.client.fetch_stats.side_effect = ControllerUnavailableError("fixture offline")
+        self.client.fetch_stats.side_effect = ControllerUnavailableError(
+            "fixture offline"
+        )
         self.simulation.sample_timeout = 0
         self.simulation.run()
         self.client.apply_actions.assert_not_called()
@@ -160,9 +184,11 @@ class InteractiveTests(unittest.TestCase):
         self.policy.decide.return_value = np.array([1, 1, 1])
         self.client.fetch_stats.side_effect = fetch
         self.client.apply_actions.side_effect = apply
-        with patch("model.interactive.time.monotonic", side_effect=lambda: clock[0]), \
-             patch("model.interactive.time.time", side_effect=lambda: clock[0]), \
-             patch.object(self.simulation.stop, "wait", side_effect=wait):
+        with (
+            patch("model.interactive.time.monotonic", side_effect=lambda: clock[0]),
+            patch("model.interactive.time.time", side_effect=lambda: clock[0]),
+            patch.object(self.simulation.stop, "wait", side_effect=wait),
+        ):
             self.simulation.run()
         self.assertIsNone(self.simulation.error)
         self.assertEqual(requests, [100, 105, 110])
@@ -172,18 +198,27 @@ class InteractiveTests(unittest.TestCase):
         requests.clear()
         self.simulation.stop.clear()
         self.simulation.decision_seconds = 1
-        with patch("model.interactive.time.monotonic", side_effect=lambda: clock[0]), \
-             patch("model.interactive.time.time", side_effect=lambda: clock[0]), \
-             patch.object(self.simulation.stop, "wait", side_effect=wait):
+        with (
+            patch("model.interactive.time.monotonic", side_effect=lambda: clock[0]),
+            patch("model.interactive.time.time", side_effect=lambda: clock[0]),
+            patch.object(self.simulation.stop, "wait", side_effect=wait),
+        ):
             self.simulation.run()
         self.assertEqual(requests, [100, 102, 104, 106, 108, 110])
 
     def test_startup_checks_model_and_mininet_without_resetting_traffic(self):
-        with patch("model.interactive.load_network", return_value=self.network), \
-             patch("model.interactive.load_inference_model", return_value=(self.policy, self.encoder)), \
-             patch("model.interactive.Emulation") as emulation, \
-             patch("model.interactive.unix_command", return_value={"scenario": "wrong"}) as command, \
-             patch("model.interactive.ControllerClient") as client:
+        with (
+            patch("model.interactive.load_network", return_value=self.network),
+            patch(
+                "model.interactive.load_inference_model",
+                return_value=(self.policy, self.encoder),
+            ),
+            patch("model.interactive.Emulation") as emulation,
+            patch(
+                "model.interactive.unix_command", return_value={"scenario": "wrong"}
+            ) as command,
+            patch("model.interactive.ControllerClient") as client,
+        ):
             with self.assertRaisesRegex(ValueError, "Mininet network differs"):
                 run_interactive(self.arguments())
         command.assert_called_once_with(emulation.return_value.mininet_socket, "status")
@@ -204,14 +239,22 @@ class InteractiveTests(unittest.TestCase):
         simulation.error = None
         simulation.done.is_set.return_value = False
         simulation.done.wait.side_effect = KeyboardInterrupt
-        with patch("model.interactive.load_network", return_value=self.network), \
-             patch("model.interactive.load_inference_model", return_value=(self.policy, self.encoder)), \
-             patch("model.interactive.Emulation") as emulation, \
-             patch("model.interactive.unix_command", return_value={"scenario": self.network.fingerprint}) as command, \
-             patch("model.interactive.ControllerClient"), \
-             patch("model.interactive.InteractiveSimulation", return_value=simulation), \
-             patch("model.interactive.threading.Thread") as thread, \
-             patch("builtins.print"):
+        with (
+            patch("model.interactive.load_network", return_value=self.network),
+            patch(
+                "model.interactive.load_inference_model",
+                return_value=(self.policy, self.encoder),
+            ),
+            patch("model.interactive.Emulation") as emulation,
+            patch(
+                "model.interactive.unix_command",
+                return_value={"scenario": self.network.fingerprint},
+            ) as command,
+            patch("model.interactive.ControllerClient"),
+            patch("model.interactive.InteractiveSimulation", return_value=simulation),
+            patch("model.interactive.threading.Thread") as thread,
+            patch("builtins.print"),
+        ):
             run_interactive(self.arguments())
         command.assert_called_once_with(emulation.return_value.mininet_socket, "status")
         emulation.return_value.reset.assert_not_called()
@@ -222,8 +265,10 @@ class InteractiveTests(unittest.TestCase):
         thread.return_value.join.assert_called_once()
 
     def test_cli_selects_one_model_and_defaults_to_v0(self):
-        with patch("sys.argv", ["interactive", "--model", "dc_full"]), \
-             patch("model.interactive.run_interactive") as run:
+        with (
+            patch("sys.argv", ["interactive", "--model", "dc_full"]),
+            patch("model.interactive.run_interactive") as run,
+        ):
             main()
         self.assertEqual(run.call_args.args[0].model, "dc_full")
         self.assertEqual(run.call_args.args[0].network, "v0.json")

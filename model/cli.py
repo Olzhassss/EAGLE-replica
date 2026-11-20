@@ -11,8 +11,13 @@ from .scenario import ROOT, Scenario, load_scenario
 
 
 def artifact_name(value: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value) or value in ("checkpoints", "runs"):
-        raise argparse.ArgumentTypeError("Use a model or experiment name without directories")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value) or value in (
+        "checkpoints",
+        "runs",
+    ):
+        raise argparse.ArgumentTypeError(
+            "Use a model or experiment name without directories"
+        )
     return value
 
 
@@ -32,7 +37,12 @@ def add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
 
 def add_evaluation_arguments(parser: argparse.ArgumentParser) -> None:
     add_runtime_arguments(parser)
-    parser.add_argument("--models", nargs=3, type=artifact_name, default=["dc_t0", "dc_pcaps", "dc_full"])
+    parser.add_argument(
+        "--models",
+        nargs=3,
+        type=artifact_name,
+        default=["dc_t0", "dc_pcaps", "dc_full"],
+    )
     parser.add_argument("--episodes", type=int)
     parser.add_argument("--repetitions", type=int)
 

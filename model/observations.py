@@ -15,6 +15,7 @@ from scipy.sparse import diags
 
 from .scenario import Scenario
 
+
 def embed_subnet(
     topology: dict[str, Any],
     *,

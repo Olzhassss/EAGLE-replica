@@ -93,7 +93,9 @@ def zoo_graphs(paths: list[Path]) -> Iterator[tuple[Path, nx.Graph]]:
         yield path, graph
 
 
-def build_scenario(name: str, graph: nx.Graph, hosts: int, source: str, seed: int | None = None) -> dict:
+def build_scenario(
+    name: str, graph: nx.Graph, hosts: int, source: str, seed: int | None = None
+) -> dict:
     """Allocate controller slots, controllable switches, host IDs and ports."""
     domains = Config.N_DOMAINS
     per_domain = Config.SWITCHES_PER_DOMAIN
@@ -212,8 +214,12 @@ def build_scenario(name: str, graph: nx.Graph, hosts: int, source: str, seed: in
 def use_dataset_hosts(scenario: dict, hosts: list[dict]) -> dict:
     """Keep topology attachments and take host identities from prepared traffic."""
     if len(hosts) != len(scenario["hosts"]):
-        raise ValueError(f"{scenario['id']} needs {len(scenario['hosts'])} dataset hosts")
-    names = {old["id"]: new["id"] for old, new in zip(scenario["hosts"], hosts, strict=True)}
+        raise ValueError(
+            f"{scenario['id']} needs {len(scenario['hosts'])} dataset hosts"
+        )
+    names = {
+        old["id"]: new["id"] for old, new in zip(scenario["hosts"], hosts, strict=True)
+    }
     for link in scenario["links"]:
         for endpoint in ("source", "target"):
             link[endpoint] = names.get(link[endpoint], link[endpoint])
@@ -233,7 +239,9 @@ def source_scenario(variant: str, hosts: list[dict], seed: int = Config.SEED) ->
         ports = defaultdict(int)
         for link in scenario["links"]:
             for endpoint in ("source", "target"):
-                ports[link[endpoint]] = max(ports[link[endpoint]], link[endpoint + "_port"])
+                ports[link[endpoint]] = max(
+                    ports[link[endpoint]], link[endpoint + "_port"]
+                )
         additions = (
             (14, "c0", ("s1", "s6")),
             (15, "c2", ("s3", "s7")),
@@ -241,25 +249,33 @@ def source_scenario(variant: str, hosts: list[dict], seed: int = Config.SEED) ->
         )
         for number, owner, neighbors in additions:
             node = f"s{number}"
-            scenario["switches"].append({"id": node, "dpid": number, "controller": owner})
+            scenario["switches"].append(
+                {"id": node, "dpid": number, "controller": owner}
+            )
             for neighbor in neighbors:
                 ports[node] += 1
                 ports[neighbor] += 1
-                scenario["links"].append({
-                    "source": node, "target": neighbor,
-                    "source_port": ports[node], "target_port": ports[neighbor],
-                    "capacity_bps": rng.randint(58, 100) * BPS_PER_MBPS,
-                })
+                scenario["links"].append(
+                    {
+                        "source": node,
+                        "target": neighbor,
+                        "source_port": ports[node],
+                        "target_port": ports[neighbor],
+                        "capacity_bps": rng.randint(58, 100) * BPS_PER_MBPS,
+                    }
+                )
     graph = nx.Graph()
     graph.add_nodes_from(row["id"] for row in scenario["switches"])
     graph.add_edges_from(
         (row["source"], row["target"])
-        for row in scenario["links"] if row["source"] in graph and row["target"] in graph
+        for row in scenario["links"]
+        if row["source"] in graph and row["target"] in graph
     )
     groups = []
     for controller in scenario["controllers"]:
         group = {
-            row["id"] for row in scenario["switches"]
+            row["id"]
+            for row in scenario["switches"]
             if row["controller"] == controller["id"]
         }
         controller.update(place_controllers(graph, [group])[0])
@@ -312,7 +328,9 @@ def main() -> None:
 
     try:
         if args.mode in ("v0", "v3"):
-            scenario = source_scenario(args.mode, dataset_hosts(args.dataset), args.seed)
+            scenario = source_scenario(
+                args.mode, dataset_hosts(args.dataset), args.seed
+            )
             print(write_network(scenario, args.output_dir))
             return
         hosts = dataset_hosts(args.dataset) if args.dataset else None

@@ -20,7 +20,9 @@ def write_json(path: Path, data: dict) -> None:
 
 def atomic_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=".write-", delete=False) as stream:
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=path.parent, prefix=".write-", delete=False
+    ) as stream:
         temporary = Path(stream.name)
         stream.write(content)
     try:
@@ -51,6 +53,13 @@ def read_rewards(path: Path) -> tuple[np.ndarray, np.ndarray]:
         rows = list(csv.DictReader(stream))
     episodes = np.array([int(row["episode"]) for row in rows])
     rewards = np.array([float(row["cumulative_reward"]) for row in rows])
-    if not len(rows) or not np.isfinite(rewards).all() or len(set(episodes)) != len(episodes) or (np.diff(episodes) <= 0).any():
-        raise ValueError(f"Expected finite rewards in increasing episode order in {path}")
+    if (
+        not len(rows)
+        or not np.isfinite(rewards).all()
+        or len(set(episodes)) != len(episodes)
+        or (np.diff(episodes) <= 0).any()
+    ):
+        raise ValueError(
+            f"Expected finite rewards in increasing episode order in {path}"
+        )
     return episodes, rewards

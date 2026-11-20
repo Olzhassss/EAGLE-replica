@@ -16,6 +16,7 @@ def checkpoint_digest(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
+
 def load_checkpoint(path: Path) -> dict[str, Any]:
     """Load tensor and primitive state on CPU."""
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)

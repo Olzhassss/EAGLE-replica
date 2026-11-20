@@ -24,7 +24,11 @@ class Host:
     ip: bytes
 
     def to_dict(self) -> dict:
-        return {"id": self.name, "mac": self.mac.hex(":"), "ip": f"{IPv4Address(self.ip)}/8"}
+        return {
+            "id": self.name,
+            "mac": self.mac.hex(":"),
+            "ip": f"{IPv4Address(self.ip)}/8",
+        }
 
 
 def hosts_for(count: int, manifest: Path | None = None) -> list[Host]:
@@ -80,12 +84,14 @@ def dataset_hosts(path: Path) -> list[dict]:
                 if ethertype != b"\x08\x00" or len(frame) < offset + 20:
                     continue
                 for name, mac, ip in (
-                    (row["source"], frame[6:12], frame[offset + 12:offset + 16]),
-                    (row["target"], frame[:6], frame[offset + 16:offset + 20]),
+                    (row["source"], frame[6:12], frame[offset + 12 : offset + 16]),
+                    (row["target"], frame[:6], frame[offset + 16 : offset + 20]),
                 ):
                     host = Host(name, mac, ip).to_dict()
                     if name in addresses and addresses[name] != host:
-                        raise ValueError(f"Inconsistent addresses for {name} in {capture_path}")
+                        raise ValueError(
+                            f"Inconsistent addresses for {name} in {capture_path}"
+                        )
                     addresses[name] = host
                 break
     result = []
@@ -94,10 +100,13 @@ def dataset_hosts(path: Path) -> list[dict]:
             result.append(addresses[name])
         elif re.fullmatch(r"h[1-9][0-9]*", name):
             index = int(name[1:])
-            result.append(Host(
-                name, b"\x02\x00" + index.to_bytes(4, "big"),
-                IPv4Address(0x0A000000 + index).packed,
-            ).to_dict())
+            result.append(
+                Host(
+                    name,
+                    b"\x02\x00" + index.to_bytes(4, "big"),
+                    IPv4Address(0x0A000000 + index).packed,
+                ).to_dict()
+            )
         else:
             raise ValueError(f"Regenerate {path} to include explicit host metadata")
     return result
@@ -193,15 +202,20 @@ def rewrite_frame(data: bytes, source: Host, target: Host) -> bytes:
         and frame[offset : offset + 6] == b"\x00\x01\x08\x00\x06\x04"
         and len(frame) >= offset + 28
     ):
-        frame[offset + 8 : offset + 28] = source.mac + source.ip + target.mac + target.ip
+        frame[offset + 8 : offset + 28] = (
+            source.mac + source.ip + target.mac + target.ip
+        )
     elif ethertype == b"\x86\xdd" and len(frame) >= offset + 40:
         _ipv6(frame, offset, source, target)
     return bytes(frame)
 
 
 def generate_pcap_dataset(
-    path: Path, pools: list[list[Window]], pairs: list[tuple[Host, Host]],
-    *, time_scale: float = 1,
+    path: Path,
+    pools: list[list[Window]],
+    pairs: list[tuple[Host, Host]],
+    *,
+    time_scale: float = 1,
 ) -> None:
     directory = path.with_suffix("")
     directory.mkdir()
@@ -221,29 +235,44 @@ def generate_pcap_dataset(
                         capture_packets(window.capture), key=lambda packet: packet[0]
                     )
                     for stamp, length, data in records:
-                        timestamp = round((elapsed * SECOND + stamp % SECOND) * time_scale)
+                        timestamp = round(
+                            (elapsed * SECOND + stamp % SECOND) * time_scale
+                        )
                         if first_packet is None:
                             first_packet = timestamp / SECOND
                         write_packet(
-                            stream, timestamp, length, rewrite_frame(data, source, target)
+                            stream,
+                            timestamp,
+                            length,
+                            rewrite_frame(data, source, target),
                         )
                         throughput[timestamp // SECOND] += length * 8 / 1_000_000
                         frame_bytes += length
                     packets += len(records)
         rates[source.name, target.name] = throughput
-        captures.append({
-            "source": source.name,
-            "target": target.name,
-            "path": str(capture.relative_to(path.parent)),
-            "packets": packets,
-            "frame_bytes": frame_bytes,
-            "first_packet_seconds": first_packet,
-            "mbps_by_second": throughput,
-        })
+        captures.append(
+            {
+                "source": source.name,
+                "target": target.name,
+                "path": str(capture.relative_to(path.parent)),
+                "packets": packets,
+                "frame_bytes": frame_bytes,
+                "first_packet_seconds": first_packet,
+                "mbps_by_second": throughput,
+            }
+        )
     hosts = {host.name: host.to_dict() for pair in pairs for host in pair}
-    path.write_text(json.dumps({
-        "schema_version": 1, "hosts": list(hosts.values()),
-        "duration_seconds": duration, "traffic_scale_factor": time_scale,
-        "captures": captures,
-    }, indent=2) + "\n")
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "hosts": list(hosts.values()),
+                "duration_seconds": duration,
+                "traffic_scale_factor": time_scale,
+                "captures": captures,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     write_chart(path, rates)

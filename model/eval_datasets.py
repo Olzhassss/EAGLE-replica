@@ -18,15 +18,28 @@ def main() -> None:
     try:
         network = load_network("v0.json")
         settings = load_settings(args.settings)
-        datasets = {name: load_dataset(network, name, "test") for names in DATASET_GROUPS.values() for name in names}
+        datasets = {
+            name: load_dataset(network, name, "test")
+            for names in DATASET_GROUPS.values()
+            for name in names
+        }
         conditions = []
         for group, names in DATASET_GROUPS.items():
             rows = []
             for name in names:
-                condition = evaluate_condition(args, network, settings, datasets[name], args.name)
+                condition = evaluate_condition(
+                    args, network, settings, datasets[name], args.name
+                )
                 rows.append(compare_condition(condition, args.models, args.seed))
                 conditions.append(rows[-1])
-                write_json(EVAL / f"{args.name}.json", {"models": args.models, "seed": args.seed, "conditions": conditions})
+                write_json(
+                    EVAL / f"{args.name}.json",
+                    {
+                        "models": args.models,
+                        "seed": args.seed,
+                        "conditions": conditions,
+                    },
+                )
             plot_bars(rows, args.models, EVAL / f"{args.name}_{group}")
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))

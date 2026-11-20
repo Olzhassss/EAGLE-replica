@@ -11,7 +11,13 @@ def main() -> None:
     parser.parse_args()
     EVAL.mkdir(parents=True, exist_ok=True)
     try:
-        plot_pruning([MODELS / f"{name}.csv" for name in ("dc_t0", "dc_t0_no_pruning", "dc_t0_static_pruning")], EVAL)
+        plot_pruning(
+            [
+                MODELS / f"{name}.csv"
+                for name in ("dc_t0", "dc_t0_no_pruning", "dc_t0_static_pruning")
+            ],
+            EVAL,
+        )
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))
 

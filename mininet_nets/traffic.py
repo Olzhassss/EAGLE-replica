@@ -30,7 +30,9 @@ class TrialTraffic:
 
     def _spawn(self, host, command: list, log: Path, role: str) -> None:
         with log.open("ab") as output:
-            process = host.popen(list(map(str, command)), stdout=output, stderr=subprocess.STDOUT)
+            process = host.popen(
+                list(map(str, command)), stdout=output, stderr=subprocess.STDOUT
+            )
         self.processes.append((process, log, role))
 
     def _prepare(self, jobs: list[dict], duration: float) -> list[dict]:
@@ -59,7 +61,9 @@ class TrialTraffic:
                 ):
                     raise ValueError("TCP size, rate, and timeout must be positive")
             elif job["kind"] == "pcap":
-                programs = ("tcpreplay", "tcpdump") if self.measure_flows else ("tcpreplay",)
+                programs = (
+                    ("tcpreplay", "tcpdump") if self.measure_flows else ("tcpreplay",)
+                )
                 for program in programs:
                     if shutil.which(program) is None:
                         raise RuntimeError("Install " + program + " for PCAP replay")
@@ -80,7 +84,9 @@ class TrialTraffic:
             prepared.append(job)
         return prepared
 
-    def start(self, jobs: list[dict], duration: float, *, measure_flows: bool = True) -> dict:
+    def start(
+        self, jobs: list[dict], duration: float, *, measure_flows: bool = True
+    ) -> dict:
         self.finish()
         if self.directory:
             shutil.rmtree(self.directory)
@@ -93,13 +99,17 @@ class TrialTraffic:
         senders = defaultdict(list)
         receivers = {}
         try:
-            for target in sorted({job["target"] for job in jobs if job["kind"] == "tcp"}):
+            for target in sorted(
+                {job["target"] for job in jobs if job["kind"] == "tcp"}
+            ):
                 directory = self.directory / target
                 directory.mkdir()
                 receivers[target] = directory
                 self._spawn(
-                    self.network[target], [sys.executable, FLOW_SCRIPT, "serve", directory],
-                    self.directory / (target + ".log"), "receiver",
+                    self.network[target],
+                    [sys.executable, FLOW_SCRIPT, "serve", directory],
+                    self.directory / (target + ".log"),
+                    "receiver",
                 )
             for job in jobs:
                 record = dict(job, measure_flows=self.measure_flows)
@@ -107,24 +117,52 @@ class TrialTraffic:
                 if job["kind"] == "tcp" and self.measure_flows:
                     record.update(
                         sender_record=str(prefix.with_suffix(".sent.json")),
-                        receiver_record=str(receivers[job["target"]] / (job["id"] + ".received.json")),
+                        receiver_record=str(
+                            receivers[job["target"]] / (job["id"] + ".received.json")
+                        ),
                     )
                 elif job["kind"] == "pcap" and self.measure_flows:
                     outgoing = prefix.with_suffix(".out.pcap")
                     incoming = prefix.with_suffix(".in.pcap")
-                    source, target = self.network[job["source"]], self.network[job["target"]]
+                    source, target = (
+                        self.network[job["source"]],
+                        self.network[job["target"]],
+                    )
                     for host, capture in ((source, outgoing), (target, incoming)):
                         self._spawn(
                             host,
-                            ["tcpdump", "-Z", "root", "-U", "-s", "0",
-                             "-i", host.defaultIntf().name, "-w", capture,
-                             "ether", "src", source.MAC(), "and", "ether", "dst", target.MAC(), "and", "tcp"],
-                            prefix.with_suffix(".log"), "capture",
+                            [
+                                "tcpdump",
+                                "-Z",
+                                "root",
+                                "-U",
+                                "-s",
+                                "0",
+                                "-i",
+                                host.defaultIntf().name,
+                                "-w",
+                                capture,
+                                "ether",
+                                "src",
+                                source.MAC(),
+                                "and",
+                                "ether",
+                                "dst",
+                                target.MAC(),
+                                "and",
+                                "tcp",
+                            ],
+                            prefix.with_suffix(".log"),
+                            "capture",
                         )
-                    record.update(sent_capture=str(outgoing), received_capture=str(incoming))
+                    record.update(
+                        sent_capture=str(outgoing), received_capture=str(incoming)
+                    )
                 self.records.append(record)
             deadline = time.monotonic() + 10
-            while any(not (directory / "ready").exists() for directory in receivers.values()):
+            while any(
+                not (directory / "ready").exists() for directory in receivers.values()
+            ):
                 if time.monotonic() >= deadline or any(
                     process.poll() is not None for process, _, _ in self.processes
                 ):
@@ -144,17 +182,27 @@ class TrialTraffic:
                 else:
                     self._spawn(
                         source,
-                        [sys.executable, FLOW_SCRIPT, "replay", record["scheduled_at"],
-                         "tcpreplay", "--intf1=" + source.defaultIntf().name,
-                         "--multiplier=1", record["resolved_path"]],
-                        self.directory / (record["id"] + ".log"), "sender",
+                        [
+                            sys.executable,
+                            FLOW_SCRIPT,
+                            "replay",
+                            record["scheduled_at"],
+                            "tcpreplay",
+                            "--intf1=" + source.defaultIntf().name,
+                            "--multiplier=1",
+                            record["resolved_path"],
+                        ],
+                        self.directory / (record["id"] + ".log"),
+                        "sender",
                     )
             for source, rows in senders.items():
                 path = self.directory / (source + ".jobs.json")
                 path.write_text(json.dumps(rows))
                 self._spawn(
-                    self.network[source], [sys.executable, FLOW_SCRIPT, "batch", path, self.directory],
-                    self.directory / (source + ".send.log"), "sender",
+                    self.network[source],
+                    [sys.executable, FLOW_SCRIPT, "batch", path, self.directory],
+                    self.directory / (source + ".send.log"),
+                    "sender",
                 )
         except BaseException:
             self.finish()
@@ -167,17 +215,26 @@ class TrialTraffic:
         if self.processes:
             time.sleep(drain_seconds)
         outcomes = []
-        for process, log, role in sorted(self.processes, key=lambda row: row[2] != "sender"):
+        for process, log, role in sorted(
+            self.processes, key=lambda row: row[2] != "sender"
+        ):
             if process.poll() is None:
-                process.send_signal(signal.SIGINT if role == "capture" else signal.SIGTERM)
+                process.send_signal(
+                    signal.SIGINT if role == "capture" else signal.SIGTERM
+                )
             try:
                 process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
-            outcomes.append({
-                "pid": process.pid, "role": role, "exit_code": process.returncode, "log": str(log),
-            })
+            outcomes.append(
+                {
+                    "pid": process.pid,
+                    "role": role,
+                    "exit_code": process.returncode,
+                    "log": str(log),
+                }
+            )
         self.processes = []
         if self.directory:
             for path in self.directory.rglob("*"):
@@ -186,4 +243,7 @@ class TrialTraffic:
                     path.chmod(0o600)
                 else:
                     path.chmod(0o711)
-        return {"flows": self.records if self.measure_flows else [], "processes": outcomes}
+        return {
+            "flows": self.records if self.measure_flows else [],
+            "processes": outcomes,
+        }

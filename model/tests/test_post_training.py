@@ -35,31 +35,53 @@ class PostTrainingTests(unittest.TestCase):
             "terminated": False,
         }
         batch = {key: [value] for key, value in self.transition.items()}
-        with AgentPool(self.encoder, self.settings["learning"], 42, distributed=False) as agents:
+        with AgentPool(
+            self.encoder, self.settings["learning"], 42, distributed=False
+        ) as agents:
             agents.run_round(1, "pretrain", batch)
             agents.run_round(2, "frozen", batch)
             state = copy.deepcopy(agents.state_dict())
         self.source_path = self.root / "checkpoints/source.pth"
-        save_checkpoint(self.source_path, {
-            "scenario_sha256": self.network.fingerprint,
-            "settings": self.settings,
-            "stages": training_stages("synthetic", 1, 1),
-            "encoder": self.encoder.to_dict(), "agents": state,
-            "round": 2, "completed_episodes": 2, "episode_rewards": [99.0],
-        })
+        save_checkpoint(
+            self.source_path,
+            {
+                "scenario_sha256": self.network.fingerprint,
+                "settings": self.settings,
+                "stages": training_stages("synthetic", 1, 1),
+                "encoder": self.encoder.to_dict(),
+                "agents": state,
+                "round": 2,
+                "completed_episodes": 2,
+                "episode_rewards": [99.0],
+            },
+        )
         self.source_digest = checkpoint_digest(self.source_path)
         self.args = argparse.Namespace(
-            network="v0.json", settings=ROOT / "settings/default.json",
-            traffic=None, dataset="dc_t5", split="test", from_checkpoint="source",
-            output="adapted", episodes=2, pretrain_episodes=None,
-            resume=False, seed=42, workers="local", device="cpu",
+            network="v0.json",
+            settings=ROOT / "settings/default.json",
+            traffic=None,
+            dataset="dc_t5",
+            split="test",
+            from_checkpoint="source",
+            output="adapted",
+            episodes=2,
+            pretrain_episodes=None,
+            resume=False,
+            seed=42,
+            workers="local",
+            device="cpu",
         )
         self.dataset = Dataset(Path("dc_t5.json"), 100, [], "t5-hash")
         self.start_patch("model.train.MODELS", self.root)
         self.start_patch("model.train.load_network", return_value=self.network)
-        self.load_dataset = self.start_patch("model.train.load_dataset", return_value=self.dataset)
+        self.load_dataset = self.start_patch(
+            "model.train.load_dataset", return_value=self.dataset
+        )
         self.start_patch("model.train.make_environment")
-        self.start_patch("model.train.make_encoder", side_effect=AssertionError("Unexpected recalibration"))
+        self.start_patch(
+            "model.train.make_encoder",
+            side_effect=AssertionError("Unexpected recalibration"),
+        )
 
     def start_patch(self, *args, **kwargs):
         patcher = patch(*args, **kwargs)
@@ -80,20 +102,33 @@ class PostTrainingTests(unittest.TestCase):
         self.assertEqual(result["round"], 4)
         self.assertEqual(result["encoder"], source["encoder"])
         self.assertEqual(result["episode_rewards"], [1.0, 2.0])
-        self.assertEqual(result["source_checkpoint"], {"name": "source", "sha256": self.source_digest})
+        self.assertEqual(
+            result["source_checkpoint"],
+            {"name": "source", "sha256": self.source_digest},
+        )
         self.assertEqual(checkpoint_digest(self.source_path), self.source_digest)
         for slot, before in source["agents"].items():
             after = result["agents"][slot]
             for key, value in before["estimator"].items():
-                torch.testing.assert_close(after["estimator"][key], value, rtol=0, atol=0)
+                torch.testing.assert_close(
+                    after["estimator"][key], value, rtol=0, atol=0
+                )
             torch.testing.assert_close(after["action_rng"], before["action_rng"])
-            self.assertTrue(any(not torch.equal(value, after["actor"][key]) for key, value in before["actor"].items()))
+            self.assertTrue(
+                any(
+                    not torch.equal(value, after["actor"][key])
+                    for key, value in before["actor"].items()
+                )
+            )
             for name in ("actor", "critic", "estimator"):
                 previous = before["optimizers"][name]["state"]
                 current = after["optimizers"][name]["state"]
                 for key in previous:
                     extra = 0 if name == "estimator" else 2
-                    self.assertEqual(current[key]["step"].item(), previous[key]["step"].item() + extra)
+                    self.assertEqual(
+                        current[key]["step"].item(),
+                        previous[key]["step"].item() + extra,
+                    )
         self.assertTrue((self.root / "adapted").exists())
         self.assertTrue((self.root / "adapted.png").exists())
 
@@ -111,7 +146,9 @@ class PostTrainingTests(unittest.TestCase):
             train(self.args)
         self.assertEqual(trial.call_count, 1)
         self.assertEqual(trial.call_args.kwargs["episode"], 2)
-        self.assertEqual(load_checkpoint(self.root / "checkpoints/adapted.pth")["round"], 4)
+        self.assertEqual(
+            load_checkpoint(self.root / "checkpoints/adapted.pth")["round"], 4
+        )
         _, rewards = read_rewards(self.root / "adapted.csv")
         self.assertEqual(rewards.tolist(), [1.0, 2.0])
 

@@ -21,8 +21,12 @@ class TrafficTests(unittest.TestCase):
             traffic = TrialTraffic(MagicMock(), root, os.getuid())
             traffic.directory = root / "previous"
             traffic.directory.mkdir()
-            with patch.object(traffic, "_prepare", side_effect=[ValueError("invalid"), []]), \
-                 patch("mininet_nets.traffic.time.sleep"):
+            with (
+                patch.object(
+                    traffic, "_prepare", side_effect=[ValueError("invalid"), []]
+                ),
+                patch("mininet_nets.traffic.time.sleep"),
+            ):
                 with self.assertRaisesRegex(ValueError, "invalid"):
                     traffic.start([], 100)
                 self.assertIsNone(traffic.directory)
@@ -31,7 +35,9 @@ class TrafficTests(unittest.TestCase):
 
     def test_async_receiver_records_payload_completion(self) -> None:
         reader = MagicMock()
-        reader.readline = AsyncMock(return_value=b'{"id":"flow","size_bytes":6,"timeout_seconds":5}\n')
+        reader.readline = AsyncMock(
+            return_value=b'{"id":"flow","size_bytes":6,"timeout_seconds":5}\n'
+        )
         reader.read = AsyncMock(side_effect=[b"abc", b"def"])
         writer = MagicMock()
         with tempfile.TemporaryDirectory() as temporary:
@@ -45,11 +51,21 @@ class TrafficTests(unittest.TestCase):
         writer = MagicMock()
         writer.drain = AsyncMock()
         writer.wait_closed = AsyncMock()
-        job = {"id": "flow", "address": "10.0.0.2", "scheduled_at": 0,
-               "size_bytes": 6, "rate_bps": 48, "timeout_seconds": 5}
+        job = {
+            "id": "flow",
+            "address": "10.0.0.2",
+            "scheduled_at": 0,
+            "size_bytes": 6,
+            "rate_bps": 48,
+            "timeout_seconds": 5,
+        }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch("mininet_nets.traffic_flow.asyncio.open_connection", new_callable=AsyncMock, return_value=(None, writer)):
+            with patch(
+                "mininet_nets.traffic_flow.asyncio.open_connection",
+                new_callable=AsyncMock,
+                return_value=(None, writer),
+            ):
                 asyncio.run(send(job, root))
             result = json.loads((root / "flow.sent.json").read_text())
         self.assertEqual(result["sent_bytes"], 6)
@@ -78,16 +94,26 @@ class TrafficTests(unittest.TestCase):
             capture = root / "prepared.pcap"
             capture.write_bytes(b"fixture")
             traffic = TrialTraffic(network, root, os.getuid())
-            job = {"id": "replay", "kind": "pcap", "source": "h1", "target": "h2",
-                   "start_seconds": 0, "path": str(capture),
-                   "sha256": hashlib.sha256(b"fixture").hexdigest()}
-            with patch("mininet_nets.traffic.shutil.which", return_value="program"), \
-                 patch.object(traffic, "_spawn") as spawn, \
-                 patch("mininet_nets.traffic.time.sleep") as sleep:
+            job = {
+                "id": "replay",
+                "kind": "pcap",
+                "source": "h1",
+                "target": "h2",
+                "start_seconds": 0,
+                "path": str(capture),
+                "sha256": hashlib.sha256(b"fixture").hexdigest(),
+            }
+            with (
+                patch("mininet_nets.traffic.shutil.which", return_value="program"),
+                patch.object(traffic, "_spawn") as spawn,
+                patch("mininet_nets.traffic.time.sleep") as sleep,
+            ):
                 traffic.start([job], 100)
                 command = spawn.call_args_list[-1].args[1]
                 self.assertIn("--multiplier=1", command)
-                self.assertFalse(any(str(argument).startswith("--mbps") for argument in command))
+                self.assertFalse(
+                    any(str(argument).startswith("--mbps") for argument in command)
+                )
                 process = MagicMock()
                 process.poll.return_value = None
                 traffic.processes = [(process, root / "log", "sender")]

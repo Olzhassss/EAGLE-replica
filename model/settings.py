@@ -10,7 +10,9 @@ from .scenario import ROOT
 DEFAULT_SETTINGS = ROOT / "settings/default.json"
 
 
-def positive(value: object, name: str, *, integer: bool = False, zero: bool = False) -> None:
+def positive(
+    value: object, name: str, *, integer: bool = False, zero: bool = False
+) -> None:
     expected = (int,) if integer else (int, float)
     if (
         type(value) not in expected
@@ -18,7 +20,9 @@ def positive(value: object, name: str, *, integer: bool = False, zero: bool = Fa
         or value < 0
         or (value == 0 and not zero)
     ):
-        raise ValueError(f"{name} must be a {'nonnegative' if zero else 'positive'} {'integer' if integer else 'number'}")
+        raise ValueError(
+            f"{name} must be a {'nonnegative' if zero else 'positive'} {'integer' if integer else 'number'}"
+        )
 
 
 def load_settings(path: Path = DEFAULT_SETTINGS) -> dict:
@@ -77,13 +81,22 @@ def training_stages(mode: str, episodes: int, pretrain_episodes: int) -> list[di
         raise ValueError("Training mode must be pcaps, synthetic, or curriculum")
     if episodes < len(profiles):
         raise ValueError("Curriculum training needs at least five policy episodes")
-    stages = [{
-        "name": "pretrain", "mode": "pretrain",
-        "profiles": profiles, "episodes": pretrain_episodes,
-    }]
+    stages = [
+        {
+            "name": "pretrain",
+            "mode": "pretrain",
+            "profiles": profiles,
+            "episodes": pretrain_episodes,
+        }
+    ]
     share, extra = divmod(episodes, len(profiles))
     stages.extend(
-        {"name": name, "mode": "frozen", "profiles": [name], "episodes": share + (index < extra)}
+        {
+            "name": name,
+            "mode": "frozen",
+            "profiles": [name],
+            "episodes": share + (index < extra),
+        }
         for index, name in enumerate(profiles)
     )
     return stages

@@ -13,7 +13,10 @@ from .settings import load_settings
 
 
 def plot_collected(args) -> None:
-    records = [json.loads((EVAL / f"{args.name}_{topology}.json").read_text()) for topology in TOPOLOGIES]
+    records = [
+        json.loads((EVAL / f"{args.name}_{topology}.json").read_text())
+        for topology in TOPOLOGIES
+    ]
     if any(
         record["model"] != args.model
         or record["model_sha256"] != records[0]["model_sha256"]
@@ -22,8 +25,14 @@ def plot_collected(args) -> None:
         or len(record["embeddings"]) != 16
         for record in records
     ):
-        raise ValueError("Collect all five topologies with the same model, seed, and encoder")
-    samples = [{"label": record["network"], "embedding": vector} for record in records for vector in record["embeddings"]]
+        raise ValueError(
+            "Collect all five topologies with the same model, seed, and encoder"
+        )
+    samples = [
+        {"label": record["network"], "embedding": vector}
+        for record in records
+        for vector in record["embeddings"]
+    ]
     plot_embeddings(samples, EVAL / args.name, args.seed)
 
 
@@ -43,9 +52,13 @@ def main() -> None:
             parser.error("Supply --network for the currently running topology")
         network = load_network(args.network)
         settings = load_settings(args.settings)
-        data = collect_embeddings(args, network, settings, load_dataset(network, "dc_t0", "test"), 16)
+        data = collect_embeddings(
+            args, network, settings, load_dataset(network, "dc_t0", "test"), 16
+        )
         write_json(EVAL / f"{args.name}_{network.path.stem}.json", data)
-        if all((EVAL / f"{args.name}_{topology}.json").exists() for topology in TOPOLOGIES):
+        if all(
+            (EVAL / f"{args.name}_{topology}.json").exists() for topology in TOPOLOGIES
+        ):
             plot_collected(args)
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))

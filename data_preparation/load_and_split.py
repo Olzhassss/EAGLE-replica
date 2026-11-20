@@ -32,7 +32,11 @@ def write_packet(stream: BinaryIO, timestamp_ns: int, length: int, data: bytes) 
 
 
 def load_windows(
-    capture: Path, spool: Path, *, megalodon: bool = False, store_packets: bool = True,
+    capture: Path,
+    spool: Path,
+    *,
+    megalodon: bool = False,
+    store_packets: bool = True,
 ) -> list[Window]:
     """Count source windows, optionally spooling their frames for PCAP output."""
     if store_packets:
@@ -77,7 +81,8 @@ def load_windows(
         raise ValueError(f"{capture} has no complete one-second windows")
     phases = ("remaining", "isolated") if megalodon else ("dc",)
     return [
-        windows.get((phase, second)) or Window(second, phase, spool / f"{phase}-{second}.pcap")
+        windows.get((phase, second))
+        or Window(second, phase, spool / f"{phase}-{second}.pcap")
         for phase in phases
         for second in range(start, stop)
     ]
@@ -85,7 +90,9 @@ def load_windows(
 
 def split_dc(windows: list[Window], rng: Random) -> tuple[list[Window], list[Window]]:
     if len(windows) < 2:
-        raise ValueError("Digital Corpora needs at least two windows for train and test")
+        raise ValueError(
+            "Digital Corpora needs at least two windows for train and test"
+        )
     shuffled = rng.sample(windows, len(windows))
     boundary = 4 * len(shuffled) // 5
     return shuffled[:boundary], shuffled[boundary:]

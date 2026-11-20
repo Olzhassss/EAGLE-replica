@@ -19,11 +19,31 @@ def main() -> None:
     try:
         network = load_network("v0.json")
         settings = load_settings(args.settings)
-        names = ("dc_t0", "dc_t1", "mg_t0", "dc_t3", "dc_t4", *DATASET_GROUPS["congestions"])
+        names = (
+            "dc_t0",
+            "dc_t1",
+            "mg_t0",
+            "dc_t3",
+            "dc_t4",
+            *DATASET_GROUPS["congestions"],
+        )
         datasets = [load_dataset(network, name, "test") for name in names]
-        records = [collect_embeddings(args, network, settings, dataset, 1, nonzero=True) for dataset in datasets]
+        records = [
+            collect_embeddings(args, network, settings, dataset, 1, nonzero=True)
+            for dataset in datasets
+        ]
         write_json(EVAL / f"{args.name}.json", {"conditions": records})
-        plot_embeddings([{"label": DATASET_LABELS[record["dataset"]], "embedding": record["embeddings"][0]} for record in records], EVAL / args.name, args.seed)
+        plot_embeddings(
+            [
+                {
+                    "label": DATASET_LABELS[record["dataset"]],
+                    "embedding": record["embeddings"][0],
+                }
+                for record in records
+            ],
+            EVAL / args.name,
+            args.seed,
+        )
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))
 

@@ -16,7 +16,10 @@ LOAD_FACTORS = {1: 0.5, 3: 1.5, 4: 2.0}
 
 
 def write_chart(
-    path: Path, rates: dict[tuple[str, str], list[float]], *, window_seconds: float = 1,
+    path: Path,
+    rates: dict[tuple[str, str], list[float]],
+    *,
+    window_seconds: float = 1,
 ) -> None:
     """Plot total Mbps and each directed pair over the prepared time grid."""
     from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -91,8 +94,11 @@ def _write_synthetic(path: Path, series: list[dict], metadata: dict) -> None:
 
 
 def generate_synthetic_dataset(
-    path: Path, pools: list[list[Window]], pairs: list[tuple[Host, Host]],
-    *, time_scale: float = 1,
+    path: Path,
+    pools: list[list[Window]],
+    pairs: list[tuple[Host, Host]],
+    *,
+    time_scale: float = 1,
 ) -> None:
     series = [
         {
@@ -111,10 +117,16 @@ def generate_synthetic_dataset(
         for (source, target), windows in zip(pairs, pools, strict=True)
     ]
     hosts = {host.name: host.to_dict() for pair in pairs for host in pair}
-    _write_synthetic(path, series, {
-        "schema_version": 1, "hosts": list(hosts.values()),
-        "traffic_scale_factor": time_scale, "window_seconds": time_scale,
-    })
+    _write_synthetic(
+        path,
+        series,
+        {
+            "schema_version": 1,
+            "hosts": list(hosts.values()),
+            "traffic_scale_factor": time_scale,
+            "window_seconds": time_scale,
+        },
+    )
 
 
 def scale_synthetic(

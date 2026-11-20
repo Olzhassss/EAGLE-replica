@@ -162,8 +162,12 @@ class AgentPool(AbstractContextManager):
         )
         weight = 1 / len(self.slots)
         arguments = {
-            slot: (mode, round_number, weight,
-                   [(weight, parameters[peer]) for peer in self.slots if peer != slot])
+            slot: (
+                mode,
+                round_number,
+                weight,
+                [(weight, parameters[peer]) for peer in self.slots if peer != slot],
+            )
             for slot in self.slots
         }
         self.dispatch("mix", arguments)
@@ -171,7 +175,8 @@ class AgentPool(AbstractContextManager):
             "agents": metrics,
             "pruned_fraction": fraction,
             "round": round_number,
-            "peer_parameter_bytes": (len(self.slots) - 1) * sum(map(len, parameters.values())),
+            "peer_parameter_bytes": (len(self.slots) - 1)
+            * sum(map(len, parameters.values())),
         }
 
     def state_dict(self) -> dict[str, Any]:

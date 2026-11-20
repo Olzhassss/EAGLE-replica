@@ -119,7 +119,11 @@ class JointEnvironment:
         return acknowledgments
 
     def reset(
-        self, dataset: Dataset, *, measure_flows: bool = True, steps: int | None = None,
+        self,
+        dataset: Dataset,
+        *,
+        measure_flows: bool = True,
+        steps: int | None = None,
     ) -> tuple[dict[str, NDArray], dict[str, Any]]:
         """Restore forwarding and start the prepared traffic schedule."""
         self.steps = 0
@@ -133,7 +137,9 @@ class JointEnvironment:
         after = max(ack["accepted_at"] for ack in actions.values())
         self._wait_for_samples(after, actions)
         self.traffic = self.emulation.start_traffic(
-            dataset.jobs, dataset.duration, measure_flows=measure_flows,
+            dataset.jobs,
+            dataset.duration,
+            measure_flows=measure_flows,
         )
         starts = (
             self.traffic.get("started_at", time.time())

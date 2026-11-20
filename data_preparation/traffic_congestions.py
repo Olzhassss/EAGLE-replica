@@ -13,7 +13,9 @@ SCALE_FACTOR = 1.5
 def _communities(network: dict) -> list[set[str]]:
     communities = {controller["id"]: set() for controller in network["controllers"]}
     if len(communities) != 3 or len(network["controllers"]) != 3:
-        raise ValueError("Regional congestion requires exactly three distinct controllers")
+        raise ValueError(
+            "Regional congestion requires exactly three distinct controllers"
+        )
     switches = {switch["id"]: switch["controller"] for switch in network["switches"]}
     hosts = {host["id"] for host in network["hosts"]}
     if len(hosts) != len(network["hosts"]):
@@ -35,7 +37,11 @@ def _communities(network: dict) -> list[set[str]]:
 
 
 def generate_congestions(
-    network: Path, dataset: Path, hosts: int, *, skip_train: bool = False,
+    network: Path,
+    dataset: Path,
+    hosts: int,
+    *,
+    skip_train: bool = False,
 ) -> None:
     communities = _communities(json.loads(network.read_text()))
     all_hosts = set().union(*communities)
