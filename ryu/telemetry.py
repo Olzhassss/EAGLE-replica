@@ -6,9 +6,9 @@ from typing import Any, Dict, Union
 from ryu.controller.controller import Datapath
 from ryu.ofproto import ofproto_v1_3_parser, ofproto_v1_5, ofproto_v1_5_parser
 
-from ryu_controller.openflow_rules import COOKIE, COOKIE_MASK, TABLE_ID
+from ryu.network import Network
+from ryu.openflow_rules import COOKIE, COOKIE_MASK, TABLE_ID
 
-from .topology_state import Scenario
 
 StatsReply = Union[
     ofproto_v1_3_parser.OFPFlowStatsReply,
@@ -21,20 +21,21 @@ StatsReply = Union[
 class Telemetry:
     """Correlate multipart replies within a single round and topology revision."""
 
-    def __init__(self, scenario: Scenario) -> None:
-        self.scenario = scenario
+    def __init__(self, network: Network) -> None:
+        self.network = network
         self.pending = None
         self.previous = None
         self.latest = None
         self.sample_id = 0
         self.host_for_mac = {
-            row["mac"].lower(): name for name, row in scenario.hosts.items()
+            row["mac"].lower(): name for name, row in network.hosts.items()
         }
 
     def reset(self) -> None:
         self.pending = self.previous = self.latest = None
 
     def request_round(self, datapaths: Dict[str, Datapath], generation: int) -> None:
+        """Issue paired port and flow polls for every currently owned datapath."""
         started = time.time()
         self.pending = {
             "started_at": started,
@@ -44,6 +45,8 @@ class Telemetry:
             "flows": {},
         }
         if not datapaths:
+            self._publish(self.pending)
+            self.pending = None
             return
         commands = []
         for switch, datapath in sorted(datapaths.items()):
@@ -51,7 +54,7 @@ class Telemetry:
             parser = datapath.ofproto_parser
             port_request = parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY)
             commands.append((switch, "ports", port_request))
-            if any(node in self.scenario.hosts for node in self.scenario.graph[switch]):
+            if any(node in self.network.hosts for node in self.network.graph[switch]):
                 # OVS exposes per-flow counters in flow descriptions in 1.5.
                 request_type = (
                     parser.OFPFlowDescStatsRequest
@@ -77,6 +80,7 @@ class Telemetry:
             request.datapath.send_msg(request)
 
     def receive(self, message: StatsReply) -> None:
+        """Accumulate multipart replies and publish only when both poll halves complete."""
         poll = self.pending
         key = (message.datapath, message.xid)
         if poll is None or key not in poll["requests"]:
@@ -89,7 +93,7 @@ class Telemetry:
             poll[kind][switch] = {
                 stat.port_no: [stat.rx_bytes, stat.tx_bytes]
                 for stat in parts
-                if stat.port_no in self.scenario.ports[switch]
+                if stat.port_no in self.network.ports[switch]
                 and max(stat.rx_bytes, stat.tx_bytes) < (1 << 64) - 1
             }
         else:
@@ -108,8 +112,8 @@ class Telemetry:
                 if not source or not target:
                     continue
                 if (
-                    target in self.scenario.graph[switch]
-                    or source in self.scenario.graph[switch]
+                    target in self.network.graph[switch]
+                    or source in self.network.graph[switch]
                 ):
                     counters[(source, target)] = byte_count
             poll[kind][switch] = counters
@@ -119,6 +123,7 @@ class Telemetry:
             self._publish(poll)
 
     def _publish(self, current: Dict[str, Any]) -> None:
+        """Derive counter deltas and delivered-byte rates over a coherent completed poll window."""
         previous = self.previous
         self.previous = current
         if previous is None or previous["generation"] != current["generation"]:

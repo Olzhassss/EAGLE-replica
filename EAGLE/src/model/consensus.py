@@ -9,12 +9,15 @@ import torch
 
 
 def pruning_fraction(config: Mapping[str, Any], round_number: int) -> float:
+    """Return the dense, static, or warmup-and-ramp sparsification fraction."""
     mode = config["mode"]
-    if mode in ("none", "dense"):
+    if mode == "none":
         return 0.0
     if mode == "static":
         return 0.7
-    warmup = config.get("warmup_rounds", 5)
+    if mode != "dynamic":
+        raise ValueError("pruning.mode must be none, static, or dynamic")
+    warmup = config["warmup_rounds"]
     if round_number <= warmup:
         return 0.0
     progress = min(1.0, (round_number - warmup - 1) / config["ramp_rounds"])
@@ -52,6 +55,7 @@ def _unpack_tensor(
     mask: bytes | None,
     payload: bytes,
 ) -> torch.Tensor:
+    """Restore a dense tensor or scatter a sparse payload into its declared shape."""
     values = np.frombuffer(payload, dtype=np.float32)
     if mask is None:
         return torch.from_numpy(values.copy().reshape(shape))

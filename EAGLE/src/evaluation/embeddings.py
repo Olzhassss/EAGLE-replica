@@ -1,23 +1,24 @@
 """Collect raw FeatherGraph observations with every support switch enabled."""
 
-from .artifacts import EVAL, MODELS
-from .checkpoints import checkpoint_digest, load_inference_model
-from .datasets import Dataset
-from .evaluate import make_environment, seed_everything
-from .run_log import RunLog
-from .scenario import Scenario
-from .trials import run_trial
+from EAGLE.src.datasets import Dataset
+from EAGLE.src.experiments.run_log import RunLog
+from EAGLE.src.experiments.runtime import make_environment, seed_everything
+from EAGLE.src.experiments.trials import run_trial
+from EAGLE.src.model.checkpoints import checkpoint_digest, load_inference_model
+from EAGLE.src.network import Network
+from EAGLE.src.paths import EVAL, MODELS
 
 
 def collect_embeddings(
     args,
-    network: Scenario,
+    network: Network,
     settings: dict,
     dataset: Dataset,
     count: int,
     *,
     nonzero: bool = False,
 ) -> dict:
+    """Collect all-on graph observations using a checkpoint encoder and fixed seed."""
     if dataset.decisions(settings) < count:
         raise ValueError(f"{dataset.name} is shorter than {count} decision intervals")
     seed_everything(args.seed)
@@ -34,7 +35,7 @@ def collect_embeddings(
     )
     result = run_trial(
         environment,
-        lambda _: [1] * len(network.controller_ids),
+        lambda _: network.all_on_actions,
         log,
         episode=1,
         dataset=dataset,

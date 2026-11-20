@@ -1,108 +1,57 @@
-"""Generate seeded EAGLE scenarios from random graphs or bundled Topology Zoo files."""
+"""Generate seeded EAGLE networks from random graphs or bundled Topology Zoo files."""
 
 import argparse
 import json
 import math
 import re
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Sequence
 from ipaddress import IPv4Address
-from itertools import combinations
 from pathlib import Path
 from random import Random
 from tempfile import TemporaryDirectory
 
 import networkx as nx
 
-from config import Config
-from data_preparation.replay import dataset_hosts
+from EAGLE.src import config
+from EAGLE.src.data_preparation.hosts import dataset_hosts
+from EAGLE.src.network_preparation.balanced_louvain import partition_domains
+from EAGLE.src.network_preparation.graphs import load_switch_graph, random_switch_graph
+from EAGLE.src.network_preparation.placement import (
+    assign_hosts,
+    place_controllers,
+    select_controllable,
+)
+from EAGLE.src.network_preparation.plots import save_network_plot
+from EAGLE.src.paths import ROOT, SOURCE_NETWORK
+from network_schema import (
+    NETWORK_SCHEMA_VERSION,
+    resolve_support_counts,
+    validate_support_layout,
+)
 
-from .balanced_louvain import partition_domains
-from .placement import assign_hosts, place_controllers, select_controllable
-from .plot import save_network_plot
 
-ROOT = Path(__file__).resolve().parents[1]
 TOPOLOGY_ZOO = Path(__file__).with_name("topology-zoo")
 BPS_PER_MBPS = 1_000_000
-SOURCE_TOPOLOGY = Path(__file__).with_name("source_v0.json")
 
 
-def random_switch_graph(nodes: int, links: int, seed: int) -> nx.Graph:
-    """Create a connected simple graph with exactly the requested sizes."""
-    if nodes < 1 or not nodes - 1 <= links <= nodes * (nodes - 1) // 2:
-        raise ValueError(
-            "A random graph needs positive nodes and between n−1 and n(n−1)/2 links"
-        )
-    rng = Random(seed)
-    graph = nx.Graph()
-    switches = list(range(1, nodes + 1))
-    graph.add_nodes_from(switches)
-    order = rng.sample(switches, nodes)
-    for index, switch in enumerate(order[1:], start=1):
-        graph.add_edge(switch, order[rng.randrange(index)])
-    extra = links - graph.number_of_edges()
-    if extra:
-        available = [
-            (a, b) for a, b in combinations(switches, 2) if not graph.has_edge(a, b)
-        ]
-        graph.add_edges_from(rng.sample(available, extra))
-    return graph
-
-
-def load_switch_graph(path: Path) -> nx.Graph:
-    """Project a Zoo graph to the largest connected simple switch component."""
-    original = nx.read_graphml(path)
-    switches = {
-        node
-        for node, data in original.nodes(data=True)
-        if data.get("kind") != "host" and str(data.get("isHost")).lower() != "true"
-    }
-    graph = nx.Graph()
-    graph.add_nodes_from(sorted(switches))
-    graph.add_edges_from(
-        sorted(
-            {
-                tuple(sorted((a, b)))
-                for a, b in original.edges()
-                if a != b and a in switches and b in switches
-            }
-        )
-    )
-    if not graph:
-        raise ValueError(f"{path.name} has no switches")
-    component = max(
-        nx.connected_components(graph), key=lambda nodes: (len(nodes), sorted(nodes))
-    )
-    ids = {node: index for index, node in enumerate(sorted(component), start=1)}
-    result = nx.Graph()
-    result.add_nodes_from((index, {"source_node": node}) for node, index in ids.items())
-    result.add_edges_from(
-        (ids[a], ids[b]) for a, b in graph.edges if a in ids and b in ids
-    )
-    return result
-
-
-def zoo_graphs(paths: list[Path]) -> Iterator[tuple[Path, nx.Graph]]:
-    """Read and report the switch and link counts used for each Zoo file."""
-    for path in paths:
-        graph = load_switch_graph(path)
-        print(
-            f"{path.stem}  {len(graph)} switches, {graph.number_of_edges()} links",
-            flush=True,
-        )
-        yield path, graph
-
-
-def build_scenario(
-    name: str, graph: nx.Graph, hosts: int, source: str, seed: int | None = None
+def build_network(
+    name: str,
+    graph: nx.Graph,
+    hosts: int,
+    source: str,
+    seed: int | None = None,
+    *,
+    support_switches: int | Sequence[int] | None = None,
 ) -> dict:
     """Allocate controller slots, controllable switches, host IDs and ports."""
-    domains = Config.N_DOMAINS
-    per_domain = Config.SWITCHES_PER_DOMAIN
+    domains = config.N_DOMAINS
+    counts = resolve_support_counts(
+        config.SWITCHES_PER_DOMAIN if support_switches is None else support_switches,
+        domains,
+    )
     if not 1 <= domains <= len(graph):
         raise ValueError(f"Need at least {domains} switches for the configured domains")
-    if per_domain < 1:
-        raise ValueError("Each domain needs at least one controllable switch")
     if hosts < 0:
         raise ValueError("Host count must be nonnegative")
     if (
@@ -114,24 +63,24 @@ def build_scenario(
         raise ValueError("Use a connected, simple, undirected switch graph")
 
     graph = graph.copy()
-    seed = Config.SEED if seed is None else seed
+    seed = config.SEED if seed is None else seed
     rng = Random(seed)
     switch_links = sorted(tuple(sorted(edge)) for edge in graph.edges)
     for a, b in switch_links:
         graph[a][b]["capacity_bps"] = rng.randint(58, 100) * BPS_PER_MBPS
-    capacity = Config.LOUVAIN_CAPACITY
+    capacity = config.LOUVAIN_CAPACITY
     options = {
         "capacity": math.ceil(len(graph) / domains) if capacity is None else capacity,
-        "difference": Config.LOUVAIN_DIFFERENCE,
-        "rho": Config.LOUVAIN_RHO,
-        "resolution": Config.LOUVAIN_RESOLUTION,
+        "difference": config.LOUVAIN_DIFFERENCE,
+        "rho": config.LOUVAIN_RHO,
+        "resolution": config.LOUVAIN_RESOLUTION,
         "seed": seed,
         "weight": "capacity_bps",
     }
     pre_merge, communities = partition_domains(graph, domains, **options)
     placements = place_controllers(graph, communities)
     groups = [set(placement["switches"]) for placement in placements]
-    controllable = select_controllable(graph, groups, per_domain)
+    controllable = select_controllable(graph, groups, counts)
     access = assign_hosts(graph, groups, controllable, hosts)
 
     owners = {node: f"c{index}" for index, group in enumerate(groups) for node in group}
@@ -142,10 +91,9 @@ def build_scenario(
             "openflow_port": 6633 + index,
             "http_port": max(8080, 6633 + domains) + index,
             "placement_switch": f"s{placement['placement_switch']}",
-            "support_switch": f"s{reserved[0]}",
-            "controllable_switches": [f"s{node}" for node in reserved],
+            "support_switches": [f"s{node}" for node in reserved],
             "mean_hops": placement["mean_hops"],
-            "initial_action": 1,
+            "initial_action": (1 << len(reserved)) - 1,
         }
         for index, (placement, reserved) in enumerate(
             zip(placements, controllable, strict=True)
@@ -189,7 +137,7 @@ def build_scenario(
         add_link(node, host["id"], 0, rng.randint(58, 100) * BPS_PER_MBPS)
 
     return {
-        "schema_version": 1,
+        "schema_version": NETWORK_SCHEMA_VERSION,
         "id": name,
         "provenance": {
             "source": source,
@@ -207,35 +155,40 @@ def build_scenario(
             "peer_poll_seconds": 0.3,
             "peer_timeout_seconds": 2,
         },
-        "traffic": {"idle": []},
     }
 
 
-def use_dataset_hosts(scenario: dict, hosts: list[dict]) -> dict:
+def use_dataset_hosts(network: dict, hosts: list[dict]) -> dict:
     """Keep topology attachments and take host identities from prepared traffic."""
-    if len(hosts) != len(scenario["hosts"]):
-        raise ValueError(f"{scenario['id']} needs {len(scenario['hosts'])} dataset hosts")
+    if len(hosts) != len(network["hosts"]):
+        raise ValueError(f"{network['id']} needs {len(network['hosts'])} dataset hosts")
     names = {
-        old["id"]: new["id"] for old, new in zip(scenario["hosts"], hosts, strict=True)
+        old["id"]: new["id"] for old, new in zip(network["hosts"], hosts, strict=True)
     }
-    for link in scenario["links"]:
+    for link in network["links"]:
         for endpoint in ("source", "target"):
             link[endpoint] = names.get(link[endpoint], link[endpoint])
-    scenario["hosts"] = hosts
-    return scenario
+    network["hosts"] = hosts
+    return network
 
 
-def source_scenario(variant: str, hosts: list[dict], seed: int = Config.SEED) -> dict:
+def source_network(
+    variant: str,
+    hosts: list[dict],
+    seed: int = config.SEED,
+    *,
+    support_switches: int | Sequence[int] | None = None,
+) -> dict:
     """Build V0 from its source graph, or its reproducible 16-switch V3 extension."""
-    scenario = json.loads(SOURCE_TOPOLOGY.read_text())
-    scenario["id"] = variant
-    scenario["provenance"] = {"source": "source_v0.json", "seed": seed}
+    network = json.loads(SOURCE_NETWORK.read_text())
+    network["id"] = variant
+    network["provenance"] = {"source": "source_v0.json", "seed": seed}
     if variant not in ("v0", "v3"):
         raise ValueError("Source variants are v0 and v3")
     if variant == "v3":
         rng = Random(seed)
         ports = defaultdict(int)
-        for link in scenario["links"]:
+        for link in network["links"]:
             for endpoint in ("source", "target"):
                 ports[link[endpoint]] = max(
                     ports[link[endpoint]], link[endpoint + "_port"]
@@ -247,11 +200,11 @@ def source_scenario(variant: str, hosts: list[dict], seed: int = Config.SEED) ->
         )
         for number, owner, neighbors in additions:
             node = f"s{number}"
-            scenario["switches"].append({"id": node, "dpid": number, "controller": owner})
+            network["switches"].append({"id": node, "dpid": number, "controller": owner})
             for neighbor in neighbors:
                 ports[node] += 1
                 ports[neighbor] += 1
-                scenario["links"].append(
+                network["links"].append(
                     {
                         "source": node,
                         "target": neighbor,
@@ -261,43 +214,61 @@ def source_scenario(variant: str, hosts: list[dict], seed: int = Config.SEED) ->
                     }
                 )
     graph = nx.Graph()
-    graph.add_nodes_from(row["id"] for row in scenario["switches"])
+    graph.add_nodes_from(row["id"] for row in network["switches"])
     graph.add_edges_from(
         (row["source"], row["target"])
-        for row in scenario["links"]
+        for row in network["links"]
         if row["source"] in graph and row["target"] in graph
     )
     groups = []
-    for controller in scenario["controllers"]:
+    for controller in network["controllers"]:
         group = {
             row["id"]
-            for row in scenario["switches"]
+            for row in network["switches"]
             if row["controller"] == controller["id"]
         }
         controller.update(place_controllers(graph, [group])[0])
         controller.pop("switches")
-        controller["controllable_switches"] = [controller["support_switch"]]
-        groups.append(sorted(group))
-    scenario["provenance"]["pre_merge_communities"] = groups
-    return use_dataset_hosts(scenario, hosts)
+        groups.append(group)
+    counts = resolve_support_counts(
+        config.SWITCHES_PER_DOMAIN if support_switches is None else support_switches,
+        len(groups),
+    )
+    if counts != tuple(len(row["support_switches"]) for row in network["controllers"]):
+        host_ids = {row["id"] for row in network["hosts"]}
+        access = {
+            link[endpoint]
+            for link in network["links"]
+            for endpoint, other in (("source", "target"), ("target", "source"))
+            if link[other] in host_ids
+        }
+        chosen = select_controllable(graph, groups, counts, excluded=access)
+        for controller, nodes in zip(network["controllers"], chosen, strict=True):
+            controller["support_switches"] = nodes
+            controller["initial_action"] = (1 << len(nodes)) - 1
+    network["provenance"]["pre_merge_communities"] = [sorted(group) for group in groups]
+    return use_dataset_hosts(network, hosts)
 
 
-def write_network(scenario: dict, output: Path) -> Path:
+def write_network(network: dict, output: Path) -> Path:
+    """Stage the JSON definition and both network plots before replacing outputs."""
+    validate_support_layout(network)
     output.mkdir(parents=True, exist_ok=True)
-    name = scenario["id"]
+    name = network["id"]
     with TemporaryDirectory(prefix=".network-", dir=output) as temporary:
         document = Path(temporary) / f"{name}.json"
         plot = document.with_suffix(".svg")
         pre_merge_plot = document.with_name(f"{name}-pre-merge.svg")
-        document.write_text(json.dumps(scenario, indent=2) + "\n")
-        save_network_plot(scenario, plot, Config.SEED)
-        save_network_plot(scenario, pre_merge_plot, Config.SEED, pre_merge=True)
+        document.write_text(json.dumps(network, indent=2) + "\n")
+        save_network_plot(network, plot, config.SEED)
+        save_network_plot(network, pre_merge_plot, config.SEED, pre_merge=True)
         pre_merge_plot.replace(output / pre_merge_plot.name)
         plot.replace(output / plot.name)
         return document.replace(output / document.name)
 
 
 def main() -> None:
+    """Generate source variants, random networks, or normalized Topology Zoo networks."""
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_subparsers(dest="mode", required=True)
     random = modes.add_parser("random", help="Generate a connected random switch graph")
@@ -305,7 +276,13 @@ def main() -> None:
     source_modes = [modes.add_parser(name) for name in ("v0", "v3")]
     for mode in (random, zoo, *source_modes):
         mode.add_argument("--output-dir", default=ROOT / "networks", type=Path)
-        mode.add_argument("--seed", type=int, default=Config.SEED)
+        mode.add_argument("--seed", type=int, default=config.SEED)
+        mode.add_argument(
+            "--support-switches",
+            type=int,
+            nargs="+",
+            help="Support switches per domain: one count for all domains, or counts in controller order",
+        )
     for mode in (random, zoo):
         inputs = mode.add_mutually_exclusive_group(required=True)
         inputs.add_argument("--hosts", type=int)
@@ -322,40 +299,44 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    try:
-        if args.mode in ("v0", "v3"):
-            scenario = source_scenario(args.mode, dataset_hosts(args.dataset), args.seed)
-            print(write_network(scenario, args.output_dir))
-            return
-        hosts = dataset_hosts(args.dataset) if args.dataset else None
-        count = len(hosts) if hosts else args.hosts
-        if args.name and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", args.name):
-            raise ValueError("Use a filename stem for --name")
-        if args.mode == "zoo" and args.name and not args.topo:
-            raise ValueError("--name requires one --topo")
-        if args.mode == "random":
-            graph = random_switch_graph(args.nodes, args.links, args.seed)
-            name = f"random-{args.nodes}n-{args.links}l"
-            graphs = [(name, name, graph)]
-        else:
-            paths = (
-                [TOPOLOGY_ZOO / f"{args.topo}.graphml"]
-                if args.topo
-                else sorted(TOPOLOGY_ZOO.glob("*.graphml"))
-            )
-            graphs = ((path.stem, path.name, graph) for path, graph in zoo_graphs(paths))
-        for name, source, graph in graphs:
-            try:
-                scenario = build_scenario(
-                    args.name or f"{name}-{count}hosts", graph, count, source, args.seed
-                )
-                if hosts:
-                    use_dataset_hosts(scenario, hosts)
-                print(write_network(scenario, args.output_dir), flush=True)
-            except ValueError as error:
-                raise ValueError(f"{name}  {error}") from error
-    except (OSError, ValueError, nx.NetworkXException) as error:
-        parser.error(str(error))
+    if args.mode in ("v0", "v3"):
+        network = source_network(
+            args.mode,
+            dataset_hosts(args.dataset),
+            args.seed,
+            support_switches=args.support_switches,
+        )
+        print(write_network(network, args.output_dir))
+        return
+    hosts = dataset_hosts(args.dataset) if args.dataset else None
+    count = len(hosts) if hosts else args.hosts
+    if args.name and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", args.name):
+        raise ValueError("Use a filename stem for --name")
+    if args.mode == "zoo" and args.name and not args.topo:
+        raise ValueError("--name requires one --topo")
+    if args.mode == "random":
+        graph = random_switch_graph(args.nodes, args.links, args.seed)
+        name = f"random-{args.nodes}n-{args.links}l"
+        graphs = [(name, name, graph)]
+    else:
+        paths = (
+            [TOPOLOGY_ZOO / f"{args.topo}.graphml"]
+            if args.topo
+            else sorted(TOPOLOGY_ZOO.glob("*.graphml"))
+        )
+        graphs = [(path.stem, path.name, load_switch_graph(path)) for path in paths]
+    for name, source, graph in graphs:
+        network = build_network(
+            args.name or f"{name}-{count}hosts",
+            graph,
+            count,
+            source,
+            args.seed,
+            support_switches=args.support_switches,
+        )
+        if hosts:
+            use_dataset_hosts(network, hosts)
+        print(write_network(network, args.output_dir), flush=True)
 
 
 if __name__ == "__main__":

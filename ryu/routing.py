@@ -1,30 +1,31 @@
-"""Pure planning for Ethernet flows in the active scenario graph."""
+"""Pure planning for Ethernet flows in the active network graph."""
 
 from typing import Dict, Tuple
 
 import crc32c
 import networkx as nx
 
-from .topology_state import Scenario
+from ryu.network import Network
+
 
 ForwardingRules = Dict[Tuple[str, str], int]
 
 
 def plan_forwarding_rules(
     graph: nx.Graph,
-    scenario: Scenario,
+    network: Network,
 ) -> Dict[str, ForwardingRules]:
     """Map each active switch to {(source MAC, destination MAC): output port}.
 
     Pick one end-to-end shortest path for each ordered host pair. Prefer paths
-    through the source domain's supporting switch and hash across equal choices.
+    through a source-domain support switch and hash across equal choices.
     """
-    hosts = sorted(node for node in scenario.hosts if node in graph)
-    rules = {node: {} for node in scenario.switches}
+    hosts = sorted(node for node in network.hosts if node in graph)
+    rules = {node: {} for node in network.switches}
     for source in hosts:
         attachment = next(iter(graph[source]))
-        slot = scenario.switches[attachment]["controller"]
-        support = scenario.controllers[slot]["support_switch"]
+        slot = network.switches[attachment]["controller"]
+        support = set(network.controllers[slot]["support_switches"])
         for target in hosts:
             if source == target:
                 continue
@@ -32,7 +33,7 @@ def plan_forwarding_rules(
                 candidates = sorted(nx.all_shortest_paths(graph, source, target))
             except nx.NetworkXNoPath:
                 continue
-            preferred = [path for path in candidates if support in path]
+            preferred = [path for path in candidates if support.intersection(path)]
             paths = preferred or candidates
             pair = (graph.nodes[source]["mac"], graph.nodes[target]["mac"])
             key = (source + target + "".join(pair)).encode()

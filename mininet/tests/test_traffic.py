@@ -1,7 +1,7 @@
 """Exercise traffic contracts with host processes and clocks mocked."""
 
-import hashlib
 import asyncio
+import hashlib
 import json
 import os
 import tempfile
@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mininet_nets.launch_topology import EmulationSession
-from mininet_nets.traffic import TrialTraffic
-from mininet_nets.traffic_flow import receive, send
+from mininet.control_server import NetworkSession
+from mininet.traffic import TrialTraffic
+from mininet.traffic_flow import receive, send
 
 
 class TrafficTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class TrafficTests(unittest.TestCase):
                 patch.object(
                     traffic, "_prepare", side_effect=[ValueError("invalid"), []]
                 ),
-                patch("mininet_nets.traffic.time.sleep"),
+                patch("mininet.traffic.time.sleep"),
             ):
                 with self.assertRaisesRegex(ValueError, "invalid"):
                     traffic.start([], 100)
@@ -62,7 +62,7 @@ class TrafficTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with patch(
-                "mininet_nets.traffic_flow.asyncio.open_connection",
+                "mininet.traffic_flow.asyncio.open_connection",
                 new_callable=AsyncMock,
                 return_value=(None, writer),
             ):
@@ -74,7 +74,7 @@ class TrafficTests(unittest.TestCase):
 
     def test_dynamic_jobs_and_drain_reach_the_traffic_runner(self) -> None:
         traffic = MagicMock()
-        session = EmulationSession("network", traffic)
+        session = NetworkSession("network", traffic)
         jobs = [{"id": "example"}]
         session.command({"operation": "traffic", "jobs": jobs, "duration_seconds": 100})
         traffic.start.assert_called_once_with(jobs, 100, measure_flows=True)
@@ -104,9 +104,9 @@ class TrafficTests(unittest.TestCase):
                 "sha256": hashlib.sha256(b"fixture").hexdigest(),
             }
             with (
-                patch("mininet_nets.traffic.shutil.which", return_value="program"),
+                patch("mininet.traffic.shutil.which", return_value="program"),
                 patch.object(traffic, "_spawn") as spawn,
-                patch("mininet_nets.traffic.time.sleep") as sleep,
+                patch("mininet.traffic.time.sleep") as sleep,
             ):
                 traffic.start([job], 100)
                 command = spawn.call_args_list[-1].args[1]

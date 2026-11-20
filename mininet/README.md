@@ -1,14 +1,44 @@
-# Mininet emulation
+# Mininet runner
 
-Install Mininet, Open vSwitch, `tcpreplay`, and `tcpdump` for system Python 3.10+. Run from the repository root after starting Ryu with the same network.
+This service builds a generated network and runs prepared traffic in its host
+namespaces. Install Mininet, Open vSwitch, `tcpreplay`, and `tcpdump` for Linux
+system Python 3.10+. Start [Ryu](../ryu/README.md) first with the same
+network JSON, then run from the repository root:
 
 ```sh
-sudo python3 mininet_nets/launch_topology.py --scenario networks/v0.json
+sudo python3 -m mininet --network networks/v0.json --cli
 ```
 
-The launcher builds the configured datapath IDs, ports, host addresses, and Mbps capacities, enables OpenFlow 1.3 and 1.5, and installs static host ARP entries. It writes the control address to `mininet_nets/.socket`.
-The Unix socket accepts network status, reset, prepared traffic jobs, and traffic finish operations. Synthetic jobs use a shared TCP receiver and a scheduled sender process per participating host. PCAP jobs preserve prepared timestamps and capture transmitting and receiving interfaces. After the configured drain period, completion analysis uses successfully delivered payloads.
+Omit `--cli` to run only the control service. The launcher enables OpenFlow 1.3
+and 1.5, applies configured ports and Mbps capacities, and installs static ARP.
+Keep this directory named `mininet/`. Its package path includes the system
+Mininet library so imports such as `mininet.net` remain available.
 
-Actions change forwarding through Ryu. A topology change requires stopping both launchers and starting Ryu first with the new file. Add `--cli` to inspect the emulated network. Ctrl-C or exiting the CLI stops managed traffic and Mininet and removes the address file. Remove a stale address file after a forced termination before restarting.
+Generated network JSON uses schema version 2. The shared `network_schema.py`
+validates support-switch ownership, list uniqueness, initial masks, and fixed
+host attachments before Mininet creates nodes. Ryu applies support-switch masks;
+Mininet continues to build all configured switches and links.
 
-[Root documentation](../Documentation.md) contains dataset generation, training, evaluations, and measurement definitions.
+| File | Responsibility |
+| --- | --- |
+| `network.py` | Validate command-facing network values and create nodes/links |
+| `launch.py` | Own Mininet, the socket server, and shutdown cleanup |
+| `control_server.py` | Serve `status`, `reset`, `traffic`, and `finish` commands |
+| `traffic.py` | Validate jobs, schedule processes, capture traffic, and drain/stop trials |
+| `traffic_flow.py` | Shared asynchronous TCP receivers, scheduled senders, and timed PCAP replay |
+| `tests/` | Network validation and traffic lifecycle checks without live Mininet |
+
+The launcher writes its Unix socket address to `mininet/.socket`.
+EAGLE discovers this file or accepts `--mininet-socket`. Commands carry
+newline-delimited JSON and are restricted to the session owner or root.
+Synthetic traffic records sender starts and receiver completions. PCAP jobs
+preserve prepared timing and optionally capture both ends for payload analysis.
+
+Ryu controls forwarding actions. A topology change requires restarting both
+services. Ctrl-C or exiting the CLI stops traffic, closes Mininet, and removes
+the address file. If forced termination leaves that file behind, verify the
+old process has stopped before removing it and relaunching.
+
+`make network ARGS='--network networks/v0.json --cli'` runs the launcher.
+`make test` includes this component's unit tests. See the
+[repository overview](../README.md) for the full workflow and output locations.

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "v0",
   "provenance": "Reconstructed from the checked-in Mininet topology and Ryu port map.",
   "controllers": [
@@ -8,24 +8,30 @@
       "host": "127.0.0.1",
       "openflow_port": 6633,
       "http_port": 8080,
-      "support_switch": "s12",
-      "initial_action": 1
+      "initial_action": 1,
+      "support_switches": [
+        "s12"
+      ]
     },
     {
       "id": "c1",
       "host": "127.0.0.1",
       "openflow_port": 6634,
       "http_port": 8081,
-      "support_switch": "s11",
-      "initial_action": 1
+      "initial_action": 1,
+      "support_switches": [
+        "s11"
+      ]
     },
     {
       "id": "c2",
       "host": "127.0.0.1",
       "openflow_port": 6635,
       "http_port": 8082,
-      "support_switch": "s13",
-      "initial_action": 1
+      "initial_action": 1,
+      "support_switches": [
+        "s13"
+      ]
     }
   ],
   "switches": [
@@ -323,6 +329,5 @@
     "poll_seconds": 1,
     "peer_poll_seconds": 0.3,
     "peer_timeout_seconds": 2
-  },
-  "traffic": {"idle": []}
+  }
 }

@@ -4,19 +4,27 @@ import argparse
 import fcntl
 import time
 
-from .artifacts import MODELS, save_rewards
-from .checkpoints import checkpoint_digest, load_checkpoint, save_checkpoint
-from .cli import add_runtime_arguments, artifact_name, load_network, resolve_device
-from .datasets import load_dataset
-from .evaluate import make_environment, seed_everything
-from .observations import ObservationEncoder, make_encoder
-from .run_log import RunLog
-from .settings import load_settings, positive, training_stages
-from .trials import run_trial
-from .workers import AgentPool
+from EAGLE.src.arguments import add_runtime_arguments, artifact_name, resolve_device
+from EAGLE.src.artifacts import save_rewards
+from EAGLE.src.datasets import load_dataset
+from EAGLE.src.experiments.run_log import RunLog
+from EAGLE.src.experiments.runtime import make_environment, seed_everything
+from EAGLE.src.experiments.trials import run_trial
+from EAGLE.src.model.checkpoints import (
+    checkpoint_digest,
+    load_checkpoint,
+    save_checkpoint,
+)
+from EAGLE.src.model.observations import ObservationEncoder, make_encoder
+from EAGLE.src.network import load_network
+from EAGLE.src.paths import MODELS
+from EAGLE.src.settings import load_settings, positive
+from EAGLE.src.training.agent_pool import AgentPool
+from EAGLE.src.training.stages import training_stages
 
 
 def train(args: argparse.Namespace) -> None:
+    """Hold the named checkpoint lock for the full training run."""
     directory = MODELS / "checkpoints"
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / f"{args.output}.lock").open("a") as lock:
@@ -28,6 +36,10 @@ def train(args: argparse.Namespace) -> None:
 
 
 def _train(args: argparse.Namespace) -> None:
+    """Calibrate or restore the encoder, execute training stages, and checkpoint episodes.
+
+    Post-training restores a source learner state into a new output. Resumption
+    restores this run only when its network, datasets, settings, and seed agree."""
     network = load_network(args.network)
     settings = load_settings(args.settings)
     if args.episodes is not None:
@@ -46,8 +58,12 @@ def _train(args: argparse.Namespace) -> None:
             )
         source_path = MODELS / "checkpoints" / f"{source_name}.pth"
         source = load_checkpoint(source_path)
-        if source.get("scenario_sha256") != network.fingerprint:
+        if source.get("network_sha256") != network.fingerprint:
             raise ValueError("Post-training requires the source checkpoint's network")
+        if tuple(source["support_counts"]) != network.support_counts:
+            raise ValueError(
+                "Post-training requires the source checkpoint's support-switch counts"
+            )
         for key in (
             "embedding",
             "learning",
@@ -90,10 +106,12 @@ def _train(args: argparse.Namespace) -> None:
     run_directory = MODELS / "checkpoints" / f"{args.output}.run"
     model_path = MODELS / args.output
     identity = {
+        "schema_version": 2,
+        "support_counts": network.support_counts,
         "settings": settings,
         "stages": stages,
         "seed": args.seed,
-        "scenario_sha256": network.fingerprint,
+        "network_sha256": network.fingerprint,
         "training_mode": "posttrain" if source else args.traffic,
         "datasets": {name: dataset.fingerprint for name, dataset in datasets.items()},
     }
@@ -139,7 +157,7 @@ def _train(args: argparse.Namespace) -> None:
             for episode in range(1, settings["training"]["calibration_episodes"] + 1):
                 result = run_trial(
                     environment,
-                    lambda _: [1] * len(network.controller_ids),
+                    lambda _: network.all_on_actions,
                     log,
                     episode=episode,
                     dataset=dataset,
@@ -156,6 +174,7 @@ def _train(args: argparse.Namespace) -> None:
         overwrite=not bool(resume),
         seed=args.seed,
         stages=stages,
+        support_counts=network.support_counts,
         encoder=encoder.to_dict(),
         source_checkpoint=identity.get("source_checkpoint"),
     )
@@ -168,6 +187,7 @@ def _train(args: argparse.Namespace) -> None:
         encoder,
         settings["learning"],
         args.seed,
+        support_counts=network.support_counts,
         distributed=args.workers == "process",
         device=device,
     ) as agents:
@@ -177,6 +197,7 @@ def _train(args: argparse.Namespace) -> None:
         environment.encode_local = agents.embed
 
         def checkpoint(episode: int) -> None:
+            """Persist all learner state and reward history at an episode boundary."""
             save_checkpoint(
                 checkpoint_path,
                 dict(
@@ -202,6 +223,7 @@ def _train(args: argparse.Namespace) -> None:
                 batch = []
 
                 def update() -> None:
+                    """Learn and mix one buffered transition batch, then log its metrics."""
                     nonlocal round_number
                     round_number += 1
                     transitions = {
@@ -250,7 +272,8 @@ def _train(args: argparse.Namespace) -> None:
         save_checkpoint(
             model_path,
             {
-                "schema_version": 1,
+                "schema_version": 2,
+                "support_counts": network.support_counts,
                 "encoder": encoder.to_dict(),
                 "settings": settings,
                 "agents": {
@@ -264,6 +287,7 @@ def _train(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    """Parse a fresh, resumed, or post-training experiment."""
     parser = argparse.ArgumentParser(description=__doc__)
     add_runtime_arguments(parser)
     parser.add_argument("--network", required=True, help="Filename in networks/")
@@ -290,10 +314,7 @@ def main() -> None:
     )
     parser.add_argument("--workers", choices=("local", "process"), default="process")
     args = parser.parse_args()
-    try:
-        train(args)
-    except (OSError, ValueError, KeyError) as error:
-        parser.error(str(error))
+    train(args)
 
 
 if __name__ == "__main__":

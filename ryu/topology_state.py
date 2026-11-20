@@ -1,133 +1,22 @@
-"""Resolve logical agent slots and forwarding state from a versioned scenario."""
+"""Track forwarding state and logical slot ownership for a configured network."""
 
-import hashlib
-import ipaddress
-import json
-import re
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import networkx as nx
 
-
-@dataclass
-class Scenario:
-    fingerprint: str
-    controllers: dict
-    switches: dict
-    hosts: dict
-    graph: nx.Graph
-    ports: dict
-    telemetry: dict
-
-
-def _by_id(rows: Iterable[Dict[str, Any]], label: str) -> Dict[str, Dict[str, Any]]:
-    indexed = {}
-    for row in rows:
-        id_ = row["id"]
-        if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", id_) or id_ in indexed:
-            raise ValueError(f"Invalid or duplicate {label} ID: {id_!r}")
-        indexed[id_] = row
-    return indexed
-
-
-def load_scenario(path: Union[str, Path]) -> Scenario:
-    """Load an undirected switch/host graph and its endpoint port index."""
-    raw = Path(path).read_bytes()
-    data = json.loads(raw)
-    if data.get("schema_version") != 1:
-        raise ValueError("Expected scenario schema version 1")
-    controllers = _by_id(data["controllers"], "controller")
-    switches = _by_id(data["switches"], "switch")
-    hosts = _by_id(data["hosts"], "host")
-    if not controllers or not switches or hosts.keys() & switches.keys():
-        raise ValueError(
-            "The scenario needs controllers and disjoint switch and host IDs",
-        )
-    dpids = set()
-    for switch in switches.values():
-        dpid = switch["dpid"]
-        if type(dpid) is not int or not 0 < dpid < (1 << 64) or dpid in dpids:
-            raise ValueError(f"Invalid or duplicate datapath ID: {dpid!r}")
-        dpids.add(dpid)
-        if switch["controller"] not in controllers:
-            raise ValueError("Unknown controller for " + switch["id"])
-
-    restrictions = set()
-    for controller_id, item in controllers.items():
-        support = item["support_switch"]
-        if support not in switches or switches[support]["controller"] != controller_id:
-            raise ValueError("Supporting switch must belong to " + controller_id)
-        if type(item["initial_action"]) is not int or item["initial_action"] not in (
-            0,
-            1,
-        ):
-            raise ValueError("Expected a binary initial action for " + controller_id)
-        for key in ("http_port", "openflow_port"):
-            port = item[key]
-            address = (item["host"], port)
-            if type(port) is not int or not 0 < port < 65536 or address in restrictions:  # noqa: PLR2004
-                raise ValueError(f"Invalid or duplicate endpoint {address!r}")
-            restrictions.add(address)
-
-    graph = nx.Graph()
-    for name in switches:
-        graph.add_node(name, kind="switch")
-    addresses = set()
-    for name, host in hosts.items():
-        mac = host["mac"].lower()
-        ipaddress.ip_interface(host["ip"])
-        if mac in addresses or not re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac):
-            raise ValueError("Invalid or duplicate MAC: " + mac)
-        addresses.add(mac)
-        graph.add_node(name, kind="host", mac=mac)
-    ports = {name: {} for name in graph}
-    for link in data["links"]:
-        source, target = link["source"], link["target"]
-        capacity = link["capacity_bps"]
-        if source not in graph or target not in graph or source == target:
-            raise ValueError(f"Invalid link endpoints: {source} to {target}")
-        if graph.has_edge(source, target) or type(capacity) is not int or capacity <= 0:
-            raise ValueError(
-                f"Duplicate link or invalid link capacity: {source} to {target}",
-            )
-        endpoints = {source: link["source_port"], target: link["target_port"]}
-        for node, neighbor in ((source, target), (target, source)):
-            port = endpoints[node]
-            minimum = 1 if node in switches else 0
-            if type(port) is not int or port < minimum or port in ports[node]:
-                raise ValueError(f"Invalid or duplicate {node} port {port}")
-            ports[node][port] = neighbor
-        graph.add_edge(source, target, ports=endpoints, capacity_bps=capacity)
-    for host in hosts:
-        if graph.degree(host) != 1 or next(iter(graph[host])) not in switches:
-            raise ValueError("Expected one switch attachment for " + host)
-
-    telemetry = data["telemetry"]
-    if any(
-        telemetry[key] <= 0
-        for key in ("poll_seconds", "peer_poll_seconds", "peer_timeout_seconds")
-    ):
-        raise ValueError("Telemetry intervals must be positive")
-    return Scenario(
-        hashlib.sha256(raw).hexdigest(),
-        controllers,
-        switches,
-        hosts,
-        graph,
-        ports,
-        telemetry,
-    )
+from ryu.network import Network
+from network_schema import valid_support_action
 
 
 class TopologyState:
-    def __init__(self, scenario: Scenario) -> None:
-        self.scenario = scenario
-        self.configured = scenario.graph
+    """Track acknowledged switch actions, elected slot owners, and the active graph."""
+
+    def __init__(self, network: Network) -> None:
+        self.network = network
+        self.configured = network.graph
         self.resources = {
             slot: {"action": controller["initial_action"], "revision": [0, ""]}
-            for slot, controller in scenario.controllers.items()
+            for slot, controller in network.controllers.items()
         }
         self.active = nx.Graph()
         self.owners = {}
@@ -139,7 +28,7 @@ class TopologyState:
             current = self.resources.get(slot)
             if (
                 current is not None
-                and update["action"] in (0, 1)
+                and valid_support_action(self.network.controllers[slot], update["action"])
                 and update["revision"] > current["revision"]
             ):
                 self.resources[slot] = update
@@ -150,6 +39,9 @@ class TopologyState:
         action: int,
         revision: List[Union[int, str]],
     ) -> Dict[str, Any]:
+        """Advance an action revision only when the domain's support mask changes."""
+        if not valid_support_action(self.network.controllers[slot], action):
+            raise ValueError("Action is outside the domain's support-switch space")
         current = self.resources[slot]
         if current["action"] != action:
             self.resources[slot] = {"action": action, "revision": revision}
@@ -160,40 +52,43 @@ class TopologyState:
 
         All switches connect to each configured controller. A live primary keeps
         its logical slot. A failed primary's slot moves to the first live peer
-        in scenario order. A switch is reachable through its elected owner.
+        in network order. A switch is reachable through its elected owner.
         """
-        live = [slot for slot in self.scenario.controllers if slot in frames]
+        live = [slot for slot in self.network.controllers if slot in frames]
         self.owners = (
             {slot: slot if slot in frames else live[0] for slot in self.resources}
             if live
             else {}
         )
         self.connected = set()
-        for switch, row in self.scenario.switches.items():
+        for switch, row in self.network.switches.items():
             frame = frames.get(self.owners.get(row["controller"]), {})
             if switch in frame.get("ports", {}):
                 self.connected.add(switch)
         disabled = {
-            self.scenario.controllers[slot]["support_switch"]
+            node
             for slot, update in self.resources.items()
-            if not update["action"]
+            for index, node in enumerate(
+                self.network.controllers[slot]["support_switches"]
+            )
+            if not update["action"] & (1 << index)
         }
         active_switches = self.connected - disabled
         self.active = self.configured.subgraph(
-            active_switches | self.scenario.hosts.keys(),
+            active_switches | self.network.hosts.keys(),
         ).copy()
         for source, target, edge in list(self.active.edges(data=True)):
             endpoints = ((source, target), (target, source))
             for node, neighbor in endpoints:
                 if node not in active_switches:
                     continue
-                slot = self.scenario.switches[node]["controller"]
+                slot = self.network.switches[node]["controller"]
                 active_ports = frames[self.owners[slot]]["ports"][node]
                 if edge["ports"][node] not in active_ports:
                     self.active.remove_edge(node, neighbor)
                     break
         self.active.remove_nodes_from(
-            host for host in self.scenario.hosts if not self.active.degree(host)
+            host for host in self.network.hosts if not self.active.degree(host)
         )
 
     def observation_graph(self, slot: str) -> nx.Graph:
@@ -201,7 +96,7 @@ class TopologyState:
         graph = self.active
         local = {
             node
-            for node, row in self.scenario.switches.items()
+            for node, row in self.network.switches.items()
             if row["controller"] == slot
         }
         local &= graph.nodes.keys()
@@ -219,7 +114,7 @@ class TopologyState:
         switches = [
             node
             for node in self.active
-            if node in self.scenario.switches
-            and self.scenario.switches[node]["controller"] == slot
+            if node in self.network.switches
+            and self.network.switches[node]["controller"] == slot
         ]
         return len(switches), sum(self.active.degree(node) for node in switches)

@@ -8,14 +8,17 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
 
-from .scenario import Scenario
+from EAGLE.src.network import Network
+from network_schema import valid_support_action
 
 
 class ControllerUnavailableError(RuntimeError):
-    pass
+    """No ready physical controller could serve a logical slot."""
 
 
 class JointActionError(RuntimeError):
+    """A joint action failed, retaining successful acknowledgments and slot failures."""
+
     def __init__(
         self,
         acknowledgments: dict[str, dict[str, Any]],
@@ -27,11 +30,14 @@ class JointActionError(RuntimeError):
 
 
 class ControllerClient:
-    def __init__(self, scenario: Scenario, request_timeout: float = 0.6) -> None:
-        self.fingerprint = scenario.fingerprint
+    """Address logical controller slots through their primary endpoint or live peers."""
+
+    def __init__(self, network: Network, request_timeout: float = 0.6) -> None:
+        self.controllers = {row["id"]: row for row in network.data["controllers"]}
+        self.fingerprint = network.fingerprint
         self.endpoints = {
             row["id"]: "http://{}:{}".format(row["host"], row["http_port"])
-            for row in scenario.data["controllers"]
+            for row in network.data["controllers"]
         }
         self.timeout = request_timeout
 
@@ -42,6 +48,7 @@ class ControllerClient:
         query: dict[str, str | int],
         action: int | None = None,
     ) -> dict[str, Any]:
+        """Issue one proxy-free JSON request to a physical controller endpoint."""
         url = self.endpoints[endpoint] + path + "?" + urlencode(query)
         headers = {"Content-Type": "application/json"} if action is not None else {}
         data = json.dumps([action]).encode() if action is not None else None
@@ -51,7 +58,7 @@ class ControllerClient:
             headers=headers,
             method="PUT" if action is not None else "GET",
         )
-        # Scenario endpoints are explicit; do not send lab traffic through a proxy.
+        # Network endpoints are explicit; do not send lab traffic through a proxy.
         with build_opener(ProxyHandler({})).open(
             request,
             timeout=self.timeout,
@@ -65,6 +72,7 @@ class ControllerClient:
         query: dict[str, str | int],
         action: int | None = None,
     ) -> dict[str, Any]:
+        """Try a slot primary and then peers, retrying only unavailable endpoints."""
         failures = []
         for endpoint in (slot, *(peer for peer in self.endpoints if peer != slot)):
             try:
@@ -90,10 +98,10 @@ class ControllerClient:
 
     def fetch_stats(self, slot: str) -> dict[str, Any]:
         """Return one timestamped snapshot or raise if the slot has no ready owner."""
-        sample = self._call_slot(slot, "/network/stats", {"view": "active"})
-        if sample["scenario"] != self.fingerprint or sample["schema_version"] != 1:
+        sample = self._call_slot(slot, "/network/stats", {})
+        if sample["network"] != self.fingerprint or sample["schema_version"] != 1:
             raise ValueError(
-                f"Controller {slot} is running a different scenario or schema",
+                f"Controller {slot} is running a different network or schema",
             )
         if sample["sample_duration_seconds"] <= 0:
             raise ValueError(f"Controller {slot} reported an invalid poll window")
@@ -105,6 +113,14 @@ class ControllerClient:
         deadline: float,
     ) -> dict[str, dict[str, Any]]:
         """Send idempotent action requests and retain all successful acknowledgments."""
+        if any(
+            slot not in self.controllers
+            or not valid_support_action(self.controllers[slot], action)
+            for slot, action in actions.items()
+        ):
+            raise ValueError(
+                "Actions must be valid support-switch masks for configured controllers"
+            )
         acknowledged = {}
         failures = dict.fromkeys(actions, "deadline elapsed")
         while failures and time.monotonic() < deadline:
@@ -116,7 +132,7 @@ class ControllerClient:
                         self._call_slot,
                         slot,
                         "/model/actions",
-                        {"details": 1, "scenario": self.fingerprint},
+                        {"network": self.fingerprint},
                         actions[slot],
                     )
                     for slot in pending
@@ -126,10 +142,10 @@ class ControllerClient:
                         ack = future.result()
                         if (
                             ack["action"] != actions[slot]
-                            or ack["scenario"] != self.fingerprint
+                            or ack["network"] != self.fingerprint
                         ):
                             raise ValueError(  # noqa: TRY301
-                                "Controller acknowledged a different action or scenario",
+                                "Controller acknowledged a different action or network",
                             )
                         acknowledged[slot] = ack
                         del failures[slot]

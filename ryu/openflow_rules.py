@@ -1,10 +1,13 @@
 """Translate EAGLE's forwarding plan into OpenFlow messages."""
 
-from typing import Optional
+from typing import Optional, Union
 
 from ryu.controller.controller import Datapath
+from ryu.ofproto.ofproto_v1_3_parser import OFPPort as OFPPort13
+from ryu.ofproto.ofproto_v1_5_parser import OFPPort as OFPPort15
 
-from .routing import ForwardingRules
+from ryu.routing import ForwardingRules
+
 
 COOKIE = 0x4541474C45
 COOKIE_MASK = (1 << 64) - 1
@@ -13,6 +16,7 @@ TABLE_ID = 0
 
 
 def request_master(datapath: Datapath, generation_id: int) -> None:
+    """Request master ownership with the supplied role generation identifier."""
     ofp = datapath.ofproto
     datapath.send_msg(
         datapath.ofproto_parser.OFPRoleRequest(
@@ -24,6 +28,7 @@ def request_master(datapath: Datapath, generation_id: int) -> None:
 
 
 def request_slave(datapath: Datapath, generation_id: int) -> None:
+    """Relinquish forwarding ownership with a slave role request."""
     ofp = datapath.ofproto
     datapath.send_msg(
         datapath.ofproto_parser.OFPRoleRequest(
@@ -86,3 +91,9 @@ def apply_forwarding_rules(
                 ],
             ),
         )
+
+
+def port_is_up(datapath: Datapath, port: Union[OFPPort13, OFPPort15]) -> bool:
+    """Return whether OpenFlow configuration and observed link state both permit traffic."""
+    ofp = datapath.ofproto
+    return not (port.config & ofp.OFPPC_PORT_DOWN or port.state & ofp.OFPPS_LINK_DOWN)

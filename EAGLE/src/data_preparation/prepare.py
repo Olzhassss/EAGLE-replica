@@ -8,13 +8,22 @@ from pathlib import Path
 from random import Random
 from tempfile import TemporaryDirectory
 
-from config import Config
-
-from .analyze_trace import DC_CAPTURE, MG_CAPTURE, ROOT
-from .load_and_split import Window, load_windows, pool_windows, split_dc
-from .replay import generate_pcap_dataset, hosts_for
-from .traffic_congestions import generate_congestions
-from .traffic_loads import generate_loads, generate_synthetic_dataset
+from EAGLE.src import config
+from EAGLE.src.data_preparation.congestion import generate_congestions
+from EAGLE.src.data_preparation.hosts import hosts_for
+from EAGLE.src.data_preparation.pcap_datasets import generate_pcap_dataset
+from EAGLE.src.data_preparation.synthetic import (
+    LOAD_FACTORS,
+    generate_synthetic_dataset,
+    scale_synthetic,
+)
+from EAGLE.src.data_preparation.windows import (
+    Window,
+    load_windows,
+    pool_windows,
+    split_dc,
+)
+from EAGLE.src.paths import DC_CAPTURE, MG_CAPTURE, ROOT
 
 
 def prepare_datasets(
@@ -24,11 +33,15 @@ def prepare_datasets(
     hosts: int,
     min_decisions: int,
     seed: int,
-    decision_seconds: float = Config.DECISION_SECONDS,
+    decision_seconds: float = config.DECISION_SECONDS,
     *,
     skip_pcaps: bool = False,
     skip_train: bool = False,
 ) -> None:
+    """Pool capture windows into reproducible synthetic and optional PCAP datasets.
+
+    Time stretching preserves traffic volume and pads short splits to the minimum
+    decision budget. Outputs are staged so failures leave no partial dataset tree."""
     if type(hosts) is not int or hosts < 2:
         raise ValueError("At least two hosts are required")
     if (
@@ -38,7 +51,7 @@ def prepare_datasets(
         or decision_seconds <= 0
     ):
         raise ValueError("min_decisions and decision_seconds must be positive")
-    time_scale = Config.TRAFFIC_SCALE_FACTOR
+    time_scale = config.TRAFFIC_SCALE_FACTOR
     if time_scale is None:
         time_scale = hosts
     if (
@@ -49,7 +62,7 @@ def prepare_datasets(
         raise ValueError(
             "TRAFFIC_SCALE_FACTOR must be at least 1, or None to use the host count"
         )
-    pairs = list(permutations(hosts_for(hosts, None), 2))
+    pairs = list(permutations(hosts_for(hosts), 2))
     if output.exists():
         raise FileExistsError(f"{output} already exists")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -61,6 +74,7 @@ def prepare_datasets(
             (staging / split).mkdir(parents=True)
 
         def write(split: str, name: str, windows: list[Window]) -> None:
+            """Pool one source split, pad its decision budget, and write its traffic variants."""
             seconds = len(windows) // len(pairs)
             if math.floor(seconds * time_scale / decision_seconds) < min_decisions:
                 seconds = math.ceil(min_decisions * decision_seconds / time_scale)
@@ -115,11 +129,17 @@ def prepare_datasets(
                     store_packets=not skip_pcaps,
                 ),
             )
-        generate_loads(staging / "test")
+        for pattern, factor in LOAD_FACTORS.items():
+            scale_synthetic(
+                staging / "test/dc_t0.json",
+                staging / f"test/dc_t{pattern}.json",
+                factor,
+            )
         staging.rename(output)
 
 
 def main() -> None:
+    """Prepare base traffic datasets or derive congestion variants from a network."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     base = commands.add_parser(
@@ -140,40 +160,33 @@ def main() -> None:
     base.add_argument(
         "--mg", type=Path, default=MG_CAPTURE, help="Megalodon Content Server capture"
     )
-    base.add_argument("--min-decisions", type=int, default=Config.MIN_DECISIONS)
-    base.add_argument("--decision-seconds", type=float, default=Config.DECISION_SECONDS)
-    base.add_argument("--seed", type=int, default=Config.SEED)
+    base.add_argument("--min-decisions", type=int, default=config.MIN_DECISIONS)
+    base.add_argument("--decision-seconds", type=float, default=config.DECISION_SECONDS)
+    base.add_argument("--seed", type=int, default=config.SEED)
     base.add_argument(
         "--skip-pcaps",
         action="store_true",
         help="Generate synthetic datasets without spooling packets",
     )
     congestion.add_argument(
-        "--network", type=Path, required=True, help="Partitioned scenario JSON"
+        "--network", type=Path, required=True, help="Partitioned network JSON"
     )
     args = parser.parse_args()
-    if args.hosts < 2:
-        parser.error("--hosts must be at least 2")
     output = args.output_dir / f"{args.hosts}_hosts"
-    try:
-        if args.command == "default":
-            prepare_datasets(
-                args.dc,
-                args.mg,
-                output,
-                args.hosts,
-                args.min_decisions,
-                args.seed,
-                args.decision_seconds,
-                skip_pcaps=args.skip_pcaps,
-                skip_train=args.skip_train,
-            )
-        else:
-            generate_congestions(
-                args.network, output, args.hosts, skip_train=args.skip_train
-            )
-    except (OSError, ValueError, KeyError, EOFError) as error:
-        parser.error(str(error))
+    if args.command == "default":
+        prepare_datasets(
+            args.dc,
+            args.mg,
+            output,
+            args.hosts,
+            args.min_decisions,
+            args.seed,
+            args.decision_seconds,
+            skip_pcaps=args.skip_pcaps,
+            skip_train=args.skip_train,
+        )
+    else:
+        generate_congestions(args.network, output, args.hosts, skip_train=args.skip_train)
     print(output)
 
 

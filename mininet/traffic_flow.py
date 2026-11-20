@@ -124,6 +124,7 @@ async def batch(path: Path, directory: Path) -> None:
 
 
 def main() -> None:
+    """Run a managed TCP sender or shared receiver inside a Mininet host."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
     server = commands.add_parser("serve")

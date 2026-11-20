@@ -1,6 +1,7 @@
 """EAGLE's per-agent actor, critic, and reward estimator networks."""
 
 import torch
+from collections.abc import Sequence
 from numpy.typing import NDArray
 from torch import nn
 
@@ -17,8 +18,8 @@ def _network(input_size: int, output_size: int) -> nn.Sequential:
     )
 
 
-def make_actor(input_size: int) -> nn.Sequential:
-    actor = _network(input_size, 2)
+def make_actor(input_size: int, action_size: int) -> nn.Sequential:
+    actor = _network(input_size, action_size)
     for layer in actor:
         if isinstance(layer, nn.Linear):
             nn.init.zeros_(layer.bias)
@@ -37,18 +38,18 @@ def make_value_network(input_size: int) -> nn.Sequential:
 class ActorCritic(nn.Module):
     """A checkpoint-compatible container for the slot-ordered inference models."""
 
-    def __init__(self, observation_size: int, agent_count: int) -> None:
+    def __init__(self, observation_size: int, action_sizes: Sequence[int]) -> None:
         super().__init__()
         self.actor = nn.ModuleList(
-            make_actor(observation_size) for _ in range(agent_count)
+            make_actor(observation_size, size) for size in action_sizes
         )
         self.critic = nn.ModuleList(
-            make_value_network(observation_size) for _ in range(agent_count)
+            make_value_network(observation_size) for _ in action_sizes
         )
 
     @torch.inference_mode()
     def decide(self, observation: dict[str, NDArray]) -> NDArray:
-        """Return one greedy binary action per slot from global_obs [features]."""
+        """Return one greedy support-switch mask per slot from global_obs [features]."""
         device = next(self.parameters()).device
         data = torch.as_tensor(
             observation["global_obs"], dtype=torch.float32, device=device

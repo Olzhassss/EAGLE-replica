@@ -13,7 +13,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import diags
 
-from .scenario import Scenario
+from EAGLE.src.network import Network
 
 
 def embed_subnet(
@@ -61,6 +61,8 @@ def embed_subnet(
 
 @dataclass(frozen=True)
 class ObservationEncoder:
+    """Controller-ordered FeatherGraph features and optional source calibration bounds."""
+
     controller_ids: tuple[str, ...]
     order: int
     eval_points: int
@@ -117,13 +119,14 @@ class ObservationEncoder:
 
 
 def make_encoder(
-    scenario: Scenario,
+    network: Network,
     settings: dict[str, Any],
     calibration: Iterable[ArrayLike] = (),
 ) -> ObservationEncoder:
+    """Build an encoder and fit per-feature extrema from source calibration samples."""
     config = settings["embedding"]
     encoder = ObservationEncoder(
-        scenario.controller_ids,
+        network.controller_ids,
         config["order"],
         config["eval_points"],
     )

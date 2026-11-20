@@ -1,12 +1,13 @@
 """Choose a minimum-hop controller location inside each community."""
 
 from __future__ import annotations
-
 from collections.abc import Iterable
 from itertools import islice, zip_longest
 from typing import Any
 
 import networkx as nx
+
+from network_schema import resolve_support_counts
 
 
 def place_controllers(
@@ -38,20 +39,26 @@ def place_controllers(
 
 
 def select_controllable(
-    graph: nx.Graph, domains: list[set[int]], per_domain: int
-) -> list[list[int]]:
-    """Select high-degree switches while keeping every disable combination connected."""
+    graph: nx.Graph,
+    domains: list[set[int | str]],
+    counts: int | Iterable[int],
+    *,
+    excluded: Iterable[int | str] = (),
+) -> list[list[int | str]]:
+    """Select support switches while keeping every disable combination connected."""
+    counts = resolve_support_counts(counts, len(domains))
     owner = {node: index for index, group in enumerate(domains) for node in group}
-    if per_domain * len(domains) >= len(graph):
+    if sum(counts) >= len(graph):
         raise ValueError("Controllable switches must leave at least one active switch")
     ranked = sorted(
-        set(graph) - set(nx.articulation_points(graph)),
+        set(graph) - set(nx.articulation_points(graph)) - set(excluded),
         key=lambda node: (-graph.degree(node), node),
     )
     chosen = [[] for _ in domains]
-    pending = [per_domain] * len(domains)
+    pending = list(counts)
 
-    def select(start: int, disabled: set[int]) -> bool:
+    def select(start: int, disabled: set[int | str]) -> bool:
+        """Backtrack over candidates while preserving connectivity for every disabled subset."""
         if not any(pending):
             return True
         active = graph.subgraph(graph.nodes - disabled)
@@ -83,8 +90,7 @@ def select_controllable(
 
     if not select(0, set()):
         raise ValueError(
-            f"Cannot select {per_domain} controllable switch(es) per domain "
-            "while preserving connectivity"
+            f"Cannot select support-switch counts {counts} while preserving connectivity"
         )
     return chosen
 

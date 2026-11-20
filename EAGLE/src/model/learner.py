@@ -7,12 +7,14 @@ from numpy.typing import NDArray
 from torch.distributions import Categorical
 from torch.nn import functional as F
 
-from .actor_critic import make_actor, make_value_network
-from .consensus import mix_contributions, pack_contribution
-from .observations import ObservationEncoder
+from EAGLE.src.model.actor_critic import make_actor, make_value_network
+from EAGLE.src.model.consensus import mix_contributions, pack_contribution
+from EAGLE.src.model.observations import ObservationEncoder
+from network_schema import resolve_support_counts
 
 
 def _cpu_state(value: Any) -> Any:
+    """Copy nested checkpoint tensors to CPU while preserving container structure."""
     if isinstance(value, torch.Tensor):
         return value.cpu()
     if isinstance(value, dict):
@@ -25,6 +27,8 @@ def _cpu_state(value: Any) -> Any:
 
 
 class AgentLearner:
+    """A single slot actor, critic, reward estimator, optimizer state, and action RNG."""
+
     def __init__(
         self,
         slot: str,
@@ -32,19 +36,26 @@ class AgentLearner:
         settings: dict[str, Any],
         seed: int,
         *,
+        support_counts: tuple[int, ...],
         device: torch.device | str = "cpu",
     ) -> None:
+        """Initialize per-slot networks, optimizers, and a reproducible CPU action RNG."""
         self.encoder = encoder
         self.index = encoder.controller_ids.index(slot)
+        self.support_counts = resolve_support_counts(
+            support_counts, len(encoder.controller_ids)
+        )
         self.settings = settings
         self.device = torch.device(device)
         torch.manual_seed(seed + self.index)
         # Preserve the action RNG format across CPU and CUDA resumes.
         self.generator = torch.Generator().manual_seed(seed + 1_000 + self.index)
-        self.actor = make_actor(encoder.size).to(self.device)
+        self.actor = make_actor(encoder.size, 1 << self.support_counts[self.index]).to(
+            self.device
+        )
         self.critic = make_value_network(encoder.size).to(self.device)
         self.estimator = make_value_network(
-            encoder.size + len(encoder.controller_ids),
+            encoder.size + sum(self.support_counts),
         ).to(self.device)
         self.optimizers = {
             "actor": torch.optim.Adam(self.actor.parameters(), lr=settings["actor_lr"]),
@@ -81,7 +92,23 @@ class AgentLearner:
             dtype=torch.float32,
             device=self.device,
         )
-        actions = torch.as_tensor(batch["action"], dtype=torch.long, device=self.device)
+        actions = torch.as_tensor(batch["action"], device=self.device)
+        limits = torch.tensor(
+            [1 << count for count in self.support_counts], device=self.device
+        )
+        if (
+            actions.is_floating_point()
+            or actions.is_complex()
+            or actions.dtype == torch.bool
+            or actions.ndim != 2
+            or actions.shape != (len(states), len(self.support_counts))
+            or (actions < 0).any()
+            or (actions >= limits).any()
+        ):
+            raise ValueError(
+                "Training actions must be integer support-switch masks in slot order"
+            )
+        actions = actions.long()
         rewards = torch.as_tensor(
             batch["reward"],
             dtype=torch.float32,
@@ -92,7 +119,15 @@ class AgentLearner:
             dtype=torch.float32,
             device=self.device,
         )
-        estimator_input = torch.cat((states, actions.float()), dim=-1)
+        bits = torch.cat(
+            [
+                (actions[:, index : index + 1] >> torch.arange(count, device=self.device))
+                & 1
+                for index, count in enumerate(self.support_counts)
+            ],
+            dim=-1,
+        )
+        estimator_input = torch.cat((states, bits.float()), dim=-1)
         metrics = {}
         if mode == "pretrain":
             self.estimator.train()
@@ -122,6 +157,7 @@ class AgentLearner:
         return metrics
 
     def _optimize(self, component: str, loss: torch.Tensor) -> float:
+        """Apply one gradient update to the selected network and return its loss."""
         optimizer = self.optimizers[component]
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -134,6 +170,7 @@ class AgentLearner:
         return {"critic": self.critic}
 
     def contribution(self, mode: str, round_number: int, fraction: float) -> bytes:
+        """Serialize the estimator or critic state shared in a consensus round."""
         return pack_contribution(
             round_number,
             self._shared_components(mode),
@@ -148,6 +185,7 @@ class AgentLearner:
         local_weight: float,
         peers: list[tuple[float, bytes]],
     ) -> None:
+        """Mix shared network parameters and the average-reward estimate with peers."""
         updated = mix_contributions(
             round_number,
             self._shared_components(mode),
@@ -159,7 +197,9 @@ class AgentLearner:
             self.mu = updated
 
     def state_dict(self) -> dict[str, Any]:
+        """Export network, optimizer, reward, and RNG state for episode resumption."""
         state = {
+            "support_counts": self.support_counts,
             "actor": self.actor.state_dict(),
             "critic": self.critic.state_dict(),
             "estimator": self.estimator.state_dict(),
@@ -173,6 +213,9 @@ class AgentLearner:
         return state if self.device.type == "cpu" else _cpu_state(state)
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
+        """Restore the complete learner state, including stochastic action sampling."""
+        if tuple(state.get("support_counts", ())) != self.support_counts:
+            raise ValueError("Checkpoint support-switch counts differ from the learner")
         self.actor.load_state_dict(state["actor"])
         self.critic.load_state_dict(state["critic"])
         self.estimator.load_state_dict(state["estimator"])

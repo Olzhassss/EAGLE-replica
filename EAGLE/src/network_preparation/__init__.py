@@ -1,1 +1,1 @@
-"""Generate switch topologies and controller-assigned scenarios offline."""
+"""Generate switch topologies and controller-assigned networks offline."""

@@ -1,0 +1,23 @@
+"""Compare saved training reward curves for dynamic, absent, and static pruning."""
+
+import argparse
+
+from EAGLE.src.evaluation.plots import plot_pruning
+from EAGLE.src.paths import EVAL, MODELS
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+    EVAL.mkdir(parents=True, exist_ok=True)
+    plot_pruning(
+        [
+            MODELS / f"{name}.csv"
+            for name in ("dc_t0", "dc_t0_no_pruning", "dc_t0_static_pruning")
+        ],
+        EVAL,
+    )
+
+
+if __name__ == "__main__":
+    main()

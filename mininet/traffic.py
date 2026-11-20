@@ -18,6 +18,8 @@ FLOW_SCRIPT = Path(__file__).with_name("traffic_flow.py").resolve()
 
 
 class TrialTraffic:
+    """Schedule host traffic processes and retain the artifacts needed to measure delivery."""
+
     def __init__(self, network, session_dir: Path, owner_uid: int) -> None:
         self.network = network
         self.session_dir = session_dir
@@ -36,6 +38,7 @@ class TrialTraffic:
         self.processes.append((process, log, role))
 
     def _prepare(self, jobs: list[dict], duration: float) -> list[dict]:
+        """Resolve hosts and capture paths before starting any traffic process."""
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError("Traffic duration must be positive")
         names = {host.name for host in self.network.hosts}
@@ -87,6 +90,10 @@ class TrialTraffic:
     def start(
         self, jobs: list[dict], duration: float, *, measure_flows: bool = True
     ) -> dict:
+        """Launch capture and receiver processes, then schedule TCP transfers or replays.
+
+        Every managed child belongs to the trial, including partially started jobs,
+        so a failed launch can be cleaned up before retrying."""
         self.finish()
         if self.directory:
             shutil.rmtree(self.directory)
@@ -208,6 +215,7 @@ class TrialTraffic:
         return {"started_at": started, "duration_seconds": duration}
 
     def finish(self, drain_seconds: float = 0) -> dict:
+        """Allow the configured drain time, stop children, and return flow artifact paths."""
         if not math.isfinite(drain_seconds) or drain_seconds < 0:
             raise ValueError("Drain seconds must be nonnegative")
         if self.processes:

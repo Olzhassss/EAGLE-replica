@@ -1,5 +1,4 @@
 .venv/
-AGENTS.md
 __pycache__/
 *.pth.tar
 /runs/

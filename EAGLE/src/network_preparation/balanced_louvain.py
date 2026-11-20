@@ -107,6 +107,7 @@ def _move_nodes(
     resolution: float,
     rng: random.Random,
 ) -> list[set[str | int]]:
+    """Move nodes between communities while respecting balance and capacity constraints."""
     order = list(graph)
     rng.shuffle(order)
     names = {node: index for index, node in enumerate(graph)}
@@ -159,6 +160,7 @@ def _move_nodes(
 def _contract(
     graph: nx.Graph, groups: list[set[int | str]], weight: str = "weight"
 ) -> nx.Graph:
+    """Collapse a partition into a weighted graph for the next Louvain level."""
     parent = {node: index for index, group in enumerate(groups) for node in group}
     coarse = nx.Graph()
     for index, group in enumerate(groups):

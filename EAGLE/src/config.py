@@ -1,15 +1,18 @@
-class Config:
-    SEED = 42
-    DECISION_SECONDS = 5
-    MIN_DECISIONS = 20
-    TRAFFIC_SCALE_FACTOR = None
-    """Time stretch for generated traffic. None uses the number of hosts."""
-    N_DOMAINS = 3
-    """Number of domains (communities/subnets)"""
-    SWITCHES_PER_DOMAIN = 1
-    """Number of controllable switches in each domain."""
-    LOUVAIN_CAPACITY = None
-    """Move capacity, or the ceiling of switches per domain when unset."""
-    LOUVAIN_DIFFERENCE = 2
-    LOUVAIN_RHO = 0.01
-    LOUVAIN_RESOLUTION = 0.1
+"""Defaults for dataset generation and network partitioning.
+
+Experiment timing, learning, and reward parameters belong in settings/*.json.
+"""
+
+SEED = 42
+DECISION_SECONDS = 5
+MIN_DECISIONS = 20
+# None stretches capture windows by the number of hosts.
+TRAFFIC_SCALE_FACTOR = None
+N_DOMAINS = 3
+# Uniform support-switch count; preparation's --support-switches can override per domain.
+SWITCHES_PER_DOMAIN = 1
+# None uses the ceiling of switches per domain as the Louvain move capacity.
+LOUVAIN_CAPACITY = None
+LOUVAIN_DIFFERENCE = 2
+LOUVAIN_RHO = 0.01
+LOUVAIN_RESOLUTION = 0.1

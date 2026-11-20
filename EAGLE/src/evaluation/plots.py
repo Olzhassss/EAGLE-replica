@@ -8,7 +8,8 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 from sklearn.manifold import TSNE
 
-from .artifacts import read_rewards, write_json
+from EAGLE.src.artifacts import read_rewards, write_json
+
 
 METRICS = {
     "fct_gain": "FCT gain",
@@ -29,6 +30,7 @@ COLORS = ("#3374a5", "#e49c39", "#45966c", "#bd647c", "#7a68a8")
 
 
 def plot_switch_counts(counts: dict[str, list[int]], target: Path) -> None:
+    """Plot the number of enabled controllable switches after each joint action."""
     figure = Figure(figsize=(9, 4.5), layout="constrained")
     axis = figure.subplots()
     baseline = counts["baseline"]
@@ -116,6 +118,7 @@ def plot_bars(
     *,
     topologies: bool = False,
 ) -> None:
+    """Draw paired FCT gain, power saving, and efficiency comparisons with intervals."""
     target.parent.mkdir(parents=True, exist_ok=True)
     labels = [
         condition["network"] if topologies else DATASET_LABELS[condition["dataset"]]
@@ -163,6 +166,7 @@ def plot_bars(
 
 
 def plot_embeddings(samples: list[dict], target: Path, seed: int) -> None:
+    """Project all labeled graph embeddings together and plot their two dimensions."""
     vectors = np.asarray([sample["embedding"] for sample in samples], dtype=float)
     if vectors.ndim != 2 or len(vectors) < 3 or not np.isfinite(vectors).all():
         raise ValueError("t-SNE requires at least three finite embeddings of equal width")
@@ -204,6 +208,7 @@ def plot_embeddings(samples: list[dict], target: Path, seed: int) -> None:
 
 
 def plot_pruning(paths: list[Path], target: Path) -> None:
+    """Align reward histories by episode and compare pruning with the dense run."""
     target.mkdir(parents=True, exist_ok=True)
     curves = [read_rewards(path) for path in paths]
     baseline_episodes, baseline = curves[1]

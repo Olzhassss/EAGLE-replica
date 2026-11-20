@@ -13,13 +13,10 @@ from typing import Any
 import torch
 from numpy.typing import NDArray
 
-from .consensus import pruning_fraction
-from .learner import AgentLearner
-from .observations import ObservationEncoder
-
-
-def _encode(message: object) -> bytes:
-    return pickle.dumps(message, protocol=5)
+from EAGLE.src.model.consensus import pruning_fraction
+from EAGLE.src.model.learner import AgentLearner
+from EAGLE.src.model.observations import ObservationEncoder
+from network_schema import resolve_support_counts
 
 
 def _serve(
@@ -29,10 +26,14 @@ def _serve(
     settings: dict[str, Any],
     seed: int,
     device: torch.device,
+    support_counts: tuple[int, ...],
 ) -> None:
+    """Serve learner requests in a child process and return serialized failures to its parent."""
     with connection:
         torch.set_num_threads(1)
-        learner = AgentLearner(slot, encoder, settings, seed, device=device)
+        learner = AgentLearner(
+            slot, encoder, settings, seed, support_counts=support_counts, device=device
+        )
         connection.send_bytes(b"ready")
         while True:
             try:
@@ -45,7 +46,7 @@ def _serve(
                 reply = True, getattr(learner, operation)(*args)
             except Exception:  # noqa: BLE001
                 reply = False, traceback.format_exc()
-            connection.send_bytes(_encode(reply))
+            connection.send_bytes(pickle.dumps(reply, protocol=5))
 
 
 class AgentPool(AbstractContextManager):
@@ -57,17 +58,19 @@ class AgentPool(AbstractContextManager):
         settings: dict[str, Any],
         seed: int,
         *,
+        support_counts: tuple[int, ...],
         distributed: bool,
         device: torch.device | str = "cpu",
         timeout: float = 30,
     ) -> None:
+        """Construct local learners or spawn one worker per slot and wait for readiness."""
         self.slots = encoder.controller_ids
-        self.encoder = encoder
+        self.support_counts = resolve_support_counts(support_counts, len(self.slots))
+        support_counts = self.support_counts
         self.settings = settings
         self.timeout = timeout
         self.local = {}
         self.workers = {}
-        self.bytes_transferred = 0
         device = torch.device(device)
         context = multiprocessing.get_context("spawn")
         try:
@@ -77,7 +80,15 @@ class AgentPool(AbstractContextManager):
                     try:
                         process = context.Process(
                             target=_serve,
-                            args=(child, slot, encoder, settings, seed, device),
+                            args=(
+                                child,
+                                slot,
+                                encoder,
+                                settings,
+                                seed,
+                                device,
+                                support_counts,
+                            ),
                             daemon=True,
                         )
                         process.start()
@@ -89,7 +100,12 @@ class AgentPool(AbstractContextManager):
                     self.workers[slot] = (parent, process)
                 else:
                     self.local[slot] = AgentLearner(
-                        slot, encoder, settings, seed, device=device
+                        slot,
+                        encoder,
+                        settings,
+                        seed,
+                        support_counts=support_counts,
+                        device=device,
                     )
             deadline = time.monotonic() + self.timeout
             for slot, (pipe, _) in self.workers.items():
@@ -118,16 +134,14 @@ class AgentPool(AbstractContextManager):
             pipe, process = self.workers[slot]
             if process.exitcode is not None:
                 raise RuntimeError(f"Agent {slot} exited during {operation}")
-            request = _encode((operation, args))
+            request = pickle.dumps((operation, args), protocol=5)
             pipe.send_bytes(request)
-            self.bytes_transferred += len(request)
         result = {}
         for slot in arguments:
             pipe, _ = self.workers[slot]
             if not pipe.poll(max(0.0, deadline - time.monotonic())):
                 raise TimeoutError(f"Agent {slot} timed out during {operation}")
             raw = pipe.recv_bytes()
-            self.bytes_transferred += len(raw)
             ok, reply = pickle.loads(raw)
             if not ok:
                 raise RuntimeError(f"Agent {slot} failed during {operation}\n{reply}")
@@ -135,6 +149,7 @@ class AgentPool(AbstractContextManager):
         return result
 
     def embed(self, topologies: Sequence[dict[str, Any]]) -> list[NDArray]:
+        """Encode local graphs in controller slot order."""
         result = self.dispatch(
             "embed",
             {slot: (graph,) for slot, graph in zip(self.slots, topologies, strict=True)},
@@ -142,6 +157,7 @@ class AgentPool(AbstractContextManager):
         return [result[slot] for slot in self.slots]
 
     def decide(self, observation: dict[str, NDArray]) -> list[int]:
+        """Sample each learner action from the same global observation."""
         row = observation["global_obs"].tolist()
         result = self.dispatch("decide", dict.fromkeys(self.slots, (row,)))
         return [result[slot] for slot in self.slots]
@@ -152,6 +168,7 @@ class AgentPool(AbstractContextManager):
         mode: str,
         batch: dict[str, list[Any]],
     ) -> dict[str, Any]:
+        """Learn locally, sparsify shared parameters, and mix peer contributions."""
         metrics = self.dispatch("learn", dict.fromkeys(self.slots, (mode, batch)))
         fraction = pruning_fraction(self.settings["pruning"], round_number)
         parameters = self.dispatch(
@@ -177,18 +194,28 @@ class AgentPool(AbstractContextManager):
         }
 
     def state_dict(self) -> dict[str, Any]:
+        """Collect complete resumable state from every learner."""
         return self.dispatch("state_dict", dict.fromkeys(self.slots, ()))
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
+        """Restore learner state without changing the controller slot mapping."""
         if state.keys() != set(self.slots):
-            raise ValueError("Checkpoint learner slots differ from the scenario")
+            raise ValueError("Checkpoint learner slots differ from the network")
+        if any(
+            tuple(row.get("support_counts", ())) != self.support_counts
+            for row in state.values()
+        ):
+            raise ValueError(
+                "Checkpoint support-switch counts differ from the worker pool"
+            )
         self.dispatch("load_state_dict", {slot: (state[slot],) for slot in self.slots})
 
     def close(self, *, abort: bool = False) -> None:
+        """Close worker pipes and reap children, terminating workers that fail to stop."""
         for pipe, process in self.workers.values():
             if not abort and process.is_alive():
                 with suppress(OSError):
-                    pipe.send_bytes(_encode(("stop", ())))
+                    pipe.send_bytes(pickle.dumps(("stop", ()), protocol=5))
             pipe.close()
         for _, process in self.workers.values():
             if not abort:
