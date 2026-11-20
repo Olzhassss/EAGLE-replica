@@ -12,7 +12,7 @@ from .evaluate import evaluate_condition
 from .plots import compare_condition, plot_bars
 from .settings import load_settings
 
-TOPOLOGIES = tuple(f"v{index}" for index in range(5))
+TOPOLOGIES = tuple(f"v{index}" for index in range(4))
 MODEL_LABELS = ("dc_t0", "dc_pcaps", "dc_full")
 
 
